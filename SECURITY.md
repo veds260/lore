@@ -30,6 +30,13 @@ file.
 **Secrets live in the environment, never the database or the client.** Anything
 prefixed `NEXT_PUBLIC_` is shipped to the browser, so nothing sensitive goes there.
 
+**The shared relay sees a little, and only when you use it.** Installs without their
+own X or Fish Audio keys call a relay run by the maintainer. It receives the X
+handles and search queries being looked up, the text sent for speech, and the
+install's relay key, which is stored in the `instance_settings` table or in
+`LORE_RELAY_KEY`. It never receives drafts, the database or model prompts. Setting
+your own keys keeps those calls off the relay, and `LORE_RELAY=off` disables it.
+
 **Nothing posts publicly on its own.** Drafts wait for approval. The background agent
 stays off unless `AGENT_ENABLED` is exactly `true`, and it holds a per-brand daily cap
 so a loop cannot run up a bill.

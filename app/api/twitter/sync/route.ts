@@ -1,3 +1,4 @@
+import { xAvailable } from '@/lib/twitterapi';
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No Twitter handle set on brand' }, { status: 400 });
   }
 
-  if (!process.env.TWITTERAPI_IO_KEY) {
+  if (!(await xAvailable())) {
     return NextResponse.json({ error: 'Twitter API not configured' }, { status: 503 });
   }
 

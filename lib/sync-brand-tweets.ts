@@ -1,6 +1,6 @@
 import { db } from '@/lib/db';
 import { ownPosts, brands, followerSnapshots } from '@/lib/db/schema';
-import { fetchUserTweets, fetchUserTweetsSince, fetchUserInfo } from '@/lib/twitterapi';
+import { fetchUserTweets, fetchUserTweetsSince, fetchUserInfo, xAvailable } from '@/lib/twitterapi';
 import { eq, sql } from 'drizzle-orm';
 
 const SIX_MONTHS_MS = 6 * 30 * 24 * 60 * 60 * 1000;
@@ -8,7 +8,7 @@ const SIX_MONTHS_MS = 6 * 30 * 24 * 60 * 60 * 1000;
 // Fast-path: profile info + 10 most recent tweets. Used during interview-first onboarding
 // so the question generator has something specific to reference in Q1-Q9. ~2-3 seconds.
 export async function quickSyncBrandTweets(brandId: string, handle: string): Promise<number> {
-  if (!process.env.TWITTERAPI_IO_KEY) return 0;
+  if (!(await xAvailable())) return 0;
 
   const [profileRes, tweetsRes] = await Promise.allSettled([
     fetchUserInfo(handle),
@@ -69,7 +69,7 @@ export async function quickSyncBrandTweets(brandId: string, handle: string): Pro
 }
 
 export async function syncBrandTweets(brandId: string, handle: string): Promise<number> {
-  if (!process.env.TWITTERAPI_IO_KEY) return 0;
+  if (!(await xAvailable())) return 0;
 
   // Fetch profile info (avatar + follower count) alongside tweets
   const [userInfo] = await Promise.allSettled([

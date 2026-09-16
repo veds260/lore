@@ -89,7 +89,7 @@ export default function LandingPage() {
             <CommandBlock command={INSTALL} tone="dark" wrap />
           </div>
           <p className="mt-4 text-[13px] text-white/45">
-            Free, nothing leaves your machine, and nothing posts until you approve it
+            Free, your drafts stay on your machine, and nothing posts until you approve it
           </p>
           <div className="mt-8 flex flex-wrap justify-center items-center gap-3">
             <StarButton />

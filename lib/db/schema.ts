@@ -506,6 +506,13 @@ export const systemConfig = pgTable('system_config', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
+// Instance-level values for this install, such as the shared relay key.
+export const instanceSettings = pgTable('instance_settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 // ─── Brand Voice History (append-only snapshot on every synthesis run) ───────
 
 export const brandVoiceHistory = pgTable('brand_voice_history', {

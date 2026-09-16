@@ -6,6 +6,7 @@ import { eq, and, gte, desc, notInArray, sql } from 'drizzle-orm';
 import { getActiveBrandId } from '@/lib/active-brand';
 import type { PostLength } from '@/components/board/types';
 // Canonical post-generation engine, shared with the connector so both generate identically. Edit the prompt/template logic in lib/post-prompt.ts, never re-fork it here.
+import { ensurePatternLibrary } from '@/lib/patterns/relay-library';
 import { buildPrompt, type FullPattern, LENGTH_GUIDE, enforceTwitterBreaks, stripEmDashes } from '@/lib/post-prompt';
 import { callAI, parseJSON, MODEL_CREATIVE } from '@/lib/ai';
 import { applyRulesFix } from '@/lib/rules-fixer';
@@ -21,6 +22,7 @@ import { extractUrl, scrapeUrl } from '@/lib/scrape';
 import {
   detectTwitterLookup, fetchUserTweets, searchTweets, fetchTweetById,
   extractTweetId, formatTweetsText, formatSingleTweet,
+  xAvailable,
 } from '@/lib/twitterapi';
 import { ensureVaultMirrored } from '@/lib/vault/sync';
 import { buildDraftSourceInputs, planPost } from '@/lib/agents/post-strategist';
@@ -52,7 +54,7 @@ export async function POST(req: NextRequest) {
   // ── Twitter lookup: detect before spending generate credits ─────────────────
   // Skip when directWrite=true, caller (pulse QRT, etc.) explicitly wants a post,
   // not a lookup, even if the topic mentions @handles or tweets.
-  if (chat && !directWrite && process.env.TWITTERAPI_IO_KEY) {
+  if (chat && !directWrite && (await xAvailable())) {
     const twitterIntent = detectTwitterLookup(topic);
     if (twitterIntent) {
       const scrapeCheck = await checkDailyScrapeLimit(userId);
@@ -274,6 +276,7 @@ export async function POST(req: NextRequest) {
       .where(eq(brands.id, brand.id))
       .limit(1);
 
+    await ensurePatternLibrary();
     const candidates = await db
       .select({ id: postPatterns.id, contentCategory: postPatterns.contentCategory, postType: postPatterns.postType })
       .from(postPatterns)
@@ -410,7 +413,7 @@ export async function POST(req: NextRequest) {
       }
 
       // AI detected a Twitter lookup the server-side regex missed
-      if (parsed.type === 'twitter_lookup' && process.env.TWITTERAPI_IO_KEY) {
+      if (parsed.type === 'twitter_lookup' && (await xAvailable())) {
         try {
           let resultText = '';
           const intent = parsed.intent as string;

@@ -12,6 +12,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "telegram:pair": "tsx scripts/telegram-pair.ts",
+    "relay:connect": "tsx scripts/relay-connect.ts",
     "test:pairing": "tsx tests/pairing.test.ts",
     "test": "tsx tests/pairing.test.ts",
     "setup": "tsx scripts/predev.ts && drizzle-kit push",

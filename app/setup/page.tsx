@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { runChecks, canRun, type Capability } from '@/lib/setup/checks';
 import { ownerExists } from '@/lib/setup/claim';
 import { auth } from '@/lib/auth';
+import { relayTurnedOff } from '@/lib/relay/client';
+import { RelayConnectButton } from '@/components/setup/relay-connect-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +55,7 @@ function Row({ cap }: { cap: Capability }) {
 {cap.fix.join('\n')}
                 </pre>
               )}
+              {cap.id === 'relay' && !relayTurnedOff() && <RelayConnectButton />}
             </>
           )}
         </div>

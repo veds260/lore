@@ -3,8 +3,11 @@
 Lore reads the last 90 days of your posts before it writes anything, learns how you
 actually write, and turns every edit you make into a rule it will not break again.
 
-It runs on your machine, against an AI agent you already pay for. There is no Lore
-account, no key of ours, and nothing phones home.
+It runs on your machine, against an AI agent you already pay for, and there is no
+Lore account. Your drafts, your database and your model calls stay on your machine.
+When you have not set your own X or Fish Audio keys, those lookups and the template
+library go through a shared relay on limited free credits, and `LORE_RELAY=off`
+turns that off.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/veds260/lore/main/install.sh | sh
@@ -70,6 +73,19 @@ Everything else is optional and degrades quietly when it is absent: Telegram, X
 lookups, voice interviews, outgoing webhooks. The setup page lists what each one
 turns on.
 
+## Shared relay
+
+X lookups and voice interviews normally need paid keys from twitterapi.io and Fish
+Audio. So you can try them first, the maintainer runs a small relay that lends those keys and a
+curated template library to each install, with a limited number of free credits.
+The installer connects you automatically, and `npm run relay:connect` does the same
+by hand.
+
+Your own key always wins. Set `TWITTERAPI_IO_KEY` or `FISH_AUDIO_API_KEY` and that
+feature stops using the relay. The relay only ever sees X handles and search
+queries, the text being spoken, and your install's relay key. It never sees drafts,
+your database or model prompts. Set `LORE_RELAY=off` to switch it off completely.
+
 ## Drive it from Claude
 
 Lore ships an MCP server, so Claude can read your voice and write in it without
@@ -133,6 +149,7 @@ npm run db:push         # apply the schema
 npm run db:studio       # browse the data
 npm run worker          # the background agent, off unless AGENT_ENABLED=true
 npm run telegram:pair   # link a Telegram chat to a brand
+npm run relay:connect   # free starter credits on the shared relay
 npm run mcp             # the MCP server, for Claude and other MCP clients
 npm test                # unit tests
 ```

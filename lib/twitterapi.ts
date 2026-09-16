@@ -1,3 +1,5 @@
+import { activeRelayKey, relayFetch } from './relay/client';
+
 const BASE = 'https://api.twitterapi.io';
 
 interface RawTweet {
@@ -12,10 +14,39 @@ interface RawTweet {
   author?: { userName: string; name: string };
 }
 
-function headers(): Record<string, string> {
+interface XResponse {
+  ok: boolean;
+  status: number;
+  json(): Promise<unknown>;
+}
+
+// One way out to twitterapi.io. Your own key goes direct. Without one, the shared
+// relay forwards the same path and params and returns the same JSON. With
+// neither, X lookups are off.
+async function xGet(path: string, params: URLSearchParams, timeoutMs?: number): Promise<XResponse> {
   const key = process.env.TWITTERAPI_IO_KEY;
-  if (!key) throw new Error('TWITTERAPI_IO_KEY not configured');
-  return { 'x-api-key': key };
+  if (key) {
+    return fetch(`${BASE}${path}?${params}`, {
+      headers: { 'x-api-key': key },
+      ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
+    });
+  }
+
+  if (await activeRelayKey()) {
+    const relayParams = new URLSearchParams({ path });
+    for (const [k, v] of params) relayParams.append(k, v);
+    const res = await relayFetch(`/x?${relayParams}`, { method: 'GET', ...(timeoutMs ? { timeoutMs } : {}) });
+    return { ok: res.ok, status: res.status, json: () => res.json() };
+  }
+
+  throw new Error('X lookups are not configured');
+}
+
+/** True when X lookups can run, through the user's own key or the shared relay. */
+export async function xAvailable(): Promise<boolean> {
+  if (process.env.TWITTERAPI_IO_KEY) return true;
+  const { activeRelayKey } = await import('./relay/client');
+  return Boolean(await activeRelayKey());
 }
 
 export function extractTweetId(url: string): string | null {
@@ -33,10 +64,7 @@ export interface TwitterUserInfo {
 export async function fetchUserInfo(handle: string): Promise<TwitterUserInfo | null> {
   try {
     const params = new URLSearchParams({ userName: handle.replace(/^@/, '') });
-    const res = await fetch(`${BASE}/twitter/user/info?${params}`, {
-      headers: headers(),
-      signal: AbortSignal.timeout(10000),
-    });
+    const res = await xGet('/twitter/user/info', params, 10000);
     if (!res.ok) return null;
     const data = await res.json() as { data?: { profilePicture?: string; followers?: number; name?: string; description?: string; location?: string } };
     const d = data?.data;
@@ -59,10 +87,7 @@ export async function fetchUserTweets(handle: string, count = 10): Promise<RawTw
     query: `from:${handle.replace(/^@/, '')} -filter:retweets -filter:replies`,
     queryType: 'Latest',
   });
-  const res = await fetch(`${BASE}/twitter/tweet/advanced_search?${params}`, {
-    headers: headers(),
-    signal: AbortSignal.timeout(12000),
-  });
+  const res = await xGet('/twitter/tweet/advanced_search', params, 12000);
   if (!res.ok) throw new Error(`twitterapi.io ${res.status}`);
   const data = await res.json() as { tweets?: RawTweet[]; status?: string };
   if (data.status === 'error') throw new Error('Twitter API error');
@@ -74,10 +99,7 @@ export async function searchTweets(query: string, count = 10): Promise<RawTweet[
     query: `${query} -filter:retweets`,
     queryType: 'Top',
   });
-  const res = await fetch(`${BASE}/twitter/tweet/advanced_search?${params}`, {
-    headers: headers(),
-    signal: AbortSignal.timeout(12000),
-  });
+  const res = await xGet('/twitter/tweet/advanced_search', params, 12000);
   if (!res.ok) throw new Error(`twitterapi.io ${res.status}`);
   const data = await res.json() as { tweets?: RawTweet[]; status?: string };
   if (data.status === 'error') throw new Error('Twitter API error');
@@ -105,10 +127,7 @@ export async function fetchUserTweetsSince(
     });
     let batch: RawTweet[] = [];
     try {
-      const res = await fetch(`${BASE}/twitter/tweet/advanced_search?${params}`, {
-        headers: headers(),
-        signal: AbortSignal.timeout(15000),
-      });
+      const res = await xGet('/twitter/tweet/advanced_search', params, 15000);
       if (!res.ok) break;
       const data = await res.json() as { tweets?: RawTweet[] };
       batch = data.tweets ?? [];
@@ -147,7 +166,7 @@ export interface ReplyAuthor {
 // evening report. Returns reply authors only; the tweet text is not needed.
 export async function fetchTweetReplies(tweetId: string, count = 20): Promise<ReplyAuthor[]> {
   try {
-    const res = await fetch(`${BASE}/twitter/tweet/replies?tweetId=${tweetId}`, { headers: headers() });
+    const res = await xGet('/twitter/tweet/replies', new URLSearchParams({ tweetId }));
     if (!res.ok) return [];
     const data = await res.json() as { tweets?: Array<{ author?: { userName?: string; name?: string; followers?: number; description?: string } }> };
     const out: ReplyAuthor[] = [];
@@ -169,10 +188,7 @@ export async function fetchTweetReplies(tweetId: string, count = 20): Promise<Re
 
 export async function fetchTweetById(id: string): Promise<RawTweet | null> {
   const params = new URLSearchParams({ tweet_ids: id });
-  const res = await fetch(`${BASE}/twitter/tweets?${params}`, {
-    headers: headers(),
-    signal: AbortSignal.timeout(12000),
-  });
+  const res = await xGet('/twitter/tweets', params, 12000);
   if (!res.ok) throw new Error(`twitterapi.io ${res.status}`);
   const data = await res.json() as { tweets?: RawTweet[] };
   return data.tweets?.[0] ?? null;

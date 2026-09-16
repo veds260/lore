@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { interviewSessions } from '@/lib/db/schema';
 import type { SessionState } from '@/lib/db/schema';
 import { z } from 'zod';
+import { activeRelayKey, relayFetch, RelayError } from '@/lib/relay/client';
 
 // Fish Audio TTS
 // Model: s2-pro, $15.00 / 1M UTF-8 bytes (~$0.0018 per interview question)
@@ -26,8 +27,10 @@ const Schema = z.object({
 const ttsCallCounts = new Map<string, number>();
 
 export async function POST(req: NextRequest) {
+  // Your own key wins. Without one, the shared relay speaks for you on limited credits.
   const apiKey = process.env.FISH_AUDIO_API_KEY;
-  if (!apiKey) return NextResponse.json({ error: 'TTS not configured' }, { status: 503 });
+  const relayKey = apiKey ? null : await activeRelayKey();
+  if (!apiKey && !relayKey) return NextResponse.json({ error: 'TTS not configured' }, { status: 503 });
 
   const body = await req.json().catch(() => ({}));
   const parsed = Schema.safeParse(body);
@@ -59,6 +62,8 @@ export async function POST(req: NextRequest) {
   }
   ttsCallCounts.set(session.id, count);
 
+  if (!apiKey) return relayTts(text);
+
   const voiceId = process.env.FISH_AUDIO_VOICE_ID ?? FALLBACK_VOICE_ID;
 
   const res = await fetch(TTS_ENDPOINT, {
@@ -85,6 +90,10 @@ export async function POST(req: NextRequest) {
   }
 
   const audioBuffer = await res.arrayBuffer();
+  return audioResponse(audioBuffer);
+}
+
+function audioResponse(audioBuffer: ArrayBuffer) {
   return new NextResponse(audioBuffer, {
     headers: {
       'Content-Type': 'audio/mpeg',
@@ -92,4 +101,31 @@ export async function POST(req: NextRequest) {
       'Content-Length': audioBuffer.byteLength.toString(),
     },
   });
+}
+
+async function relayTts(text: string) {
+  // The relay only takes a real Fish voice id. Anything else falls back to its default.
+  const configured = process.env.FISH_AUDIO_VOICE_ID?.trim();
+  const voiceId = configured && /^[0-9a-f]{32}$/i.test(configured) ? configured : undefined;
+
+  try {
+    const res = await relayFetch('/voice/tts', {
+      method: 'POST',
+      body: JSON.stringify(voiceId ? { text, voiceId } : { text }),
+    });
+    return audioResponse(await res.arrayBuffer());
+  } catch (err) {
+    if (err instanceof RelayError) {
+      console.error(`Relay TTS error [${err.status} ${err.code}]`);
+      if (err.code === 'out_of_credits') {
+        return NextResponse.json({ error: 'The shared relay is out of credits for this install' }, { status: 402 });
+      }
+      if (err.code === 'daily_cap') {
+        return NextResponse.json({ error: 'The shared relay hit its daily voice limit, try again tomorrow' }, { status: 429 });
+      }
+      return NextResponse.json({ error: 'TTS failed' }, { status: 502 });
+    }
+    console.error('Relay TTS request failed:', err instanceof Error ? err.message : String(err));
+    return NextResponse.json({ error: 'TTS failed' }, { status: 502 });
+  }
 }

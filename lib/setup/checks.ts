@@ -10,6 +10,7 @@
  */
 
 import { describeSetup, resetProviderCache } from '../providers';
+import { getRelayKey, relayBalance, relayTurnedOff } from '../relay/client';
 
 export type Status = 'ok' | 'missing' | 'broken' | 'unknown';
 
@@ -126,22 +127,72 @@ async function checkTelegram(): Promise<Capability> {
   }
 }
 
-function checkVoice(): Capability {
+/** A relay key that is actually usable: present, and the relay not turned off. */
+async function relayConnected(): Promise<boolean> {
+  if (relayTurnedOff()) return false;
+  return Boolean(await getRelayKey());
+}
+
+async function checkVoice(): Promise<Capability> {
   const own = env('FISH_AUDIO_API_KEY');
-  const relay = env('LORE_VOICE_RELAY_URL');
+  const relay = own ? false : await relayConnected();
   return {
     id: 'voice',
     label: 'Voice interviews',
     required: false,
     unlocks: 'Lore interviews you out loud instead of by typing, which gets better material faster.',
-    status: own ? 'ok' : relay ? 'ok' : 'missing',
-    detail: own ? 'using your own Fish Audio key, no limits' : relay ? 'using the shared relay, rate limited' : undefined,
+    status: own || relay ? 'ok' : 'missing',
+    detail: own ? 'using your own Fish Audio key, no limits' : relay ? 'through the shared relay, limited credits' : undefined,
     fix: own || relay ? undefined : [
       'Either works:',
-      '  A. Free trial on the shared relay: set LORE_VOICE_RELAY_URL (see README). Rate limited and may be capped.',
+      '  A. Free starter credits on the shared relay: run `npm run relay:connect`, or use the Connect button on this page.',
       '  B. Unlimited: make a Fish Audio account, then set FISH_AUDIO_API_KEY in .env.local',
     ],
   };
+}
+
+async function checkRelay(): Promise<Capability> {
+  const base: Omit<Capability, 'status'> = {
+    id: 'relay',
+    label: 'Shared relay',
+    required: false,
+    unlocks: 'X lookups, voice interviews and the template library without your own API keys, on limited free credits.',
+  };
+  if (relayTurnedOff()) return { ...base, status: 'missing', detail: 'turned off with LORE_RELAY=off' };
+
+  const key = await getRelayKey();
+  if (!key) {
+    return { ...base, status: 'missing', fix: ['Run `npm run relay:connect`, or use the Connect button on this page.'] };
+  }
+
+  try {
+    const balance = await relayBalance();
+    if (!balance) return { ...base, status: 'unknown', detail: 'could not read the balance' };
+    if (balance.credits <= 0) {
+      return {
+        ...base,
+        status: 'broken',
+        detail: `free credits used up (${balance.granted} granted), ${balance.patternsLeftToday} templates left today`,
+        fix: [
+          'X lookups and voice now need your own keys:',
+          '  TWITTERAPI_IO_KEY from twitterapi.io/dashboard',
+          '  FISH_AUDIO_API_KEY from fish.audio',
+          'Put them in .env.local and restart. Your own keys always take priority over the relay.',
+        ],
+      };
+    }
+    return {
+      ...base,
+      status: 'ok',
+      detail: `${balance.credits} credits left, ${balance.patternsLeftToday} templates left today`,
+    };
+  } catch (err) {
+    return {
+      ...base,
+      status: 'unknown',
+      detail: `connected, but the balance check failed: ${err instanceof Error ? err.message.slice(0, 160) : String(err)}`,
+    };
+  }
 }
 
 function checkWebhooks(): Capability {
@@ -162,16 +213,21 @@ function checkWebhooks(): Capability {
   };
 }
 
-function checkTwitter(): Capability {
+async function checkTwitter(): Promise<Capability> {
   const key = env('TWITTERAPI_IO_KEY');
+  const relay = key ? false : await relayConnected();
   return {
     id: 'twitter',
     label: 'X lookups',
     required: false,
     unlocks: 'Lore can read X profiles and timelines to learn a voice and find sources.',
-    status: key ? 'ok' : 'missing',
-    detail: key ? 'key set' : undefined,
-    fix: key ? undefined : ['1. Get a key at twitterapi.io/dashboard', '2. Set TWITTERAPI_IO_KEY in .env.local'],
+    status: key || relay ? 'ok' : 'missing',
+    detail: key ? 'your own key' : relay ? 'through the shared relay, limited credits' : undefined,
+    fix: key || relay ? undefined : [
+      '1. Get a key at twitterapi.io/dashboard',
+      '2. Set TWITTERAPI_IO_KEY in .env.local',
+      'Or skip the key and use free starter credits: run `npm run relay:connect`.',
+    ],
   };
 }
 
@@ -180,9 +236,10 @@ export async function runChecks(): Promise<Capability[]> {
     checkModel(),
     checkDatabase(),
     checkTelegram(),
-    Promise.resolve(checkVoice()),
+    checkVoice(),
     Promise.resolve(checkWebhooks()),
-    Promise.resolve(checkTwitter()),
+    checkTwitter(),
+    checkRelay(),
   ]);
 
   return settled.map((r, i) =>
