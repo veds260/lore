@@ -286,6 +286,8 @@ export async function recordDailyAction(userId: string, action: DailyAction): Pr
 }
 
 export async function checkDailyLimit(userId: string, action: DailyAction): Promise<DailyLimitResult> {
+  // Self-hosted installs run on the owner's own subscription or keys, so nothing is capped.
+  if (!isHosted()) return { allowed: true, used: 0, limit: -1 };
   const [plan, used] = await Promise.all([getUserPlan(userId), getDailyUsage(userId, action)]);
   const config = PLAN_CONFIG[plan];
   const limit = action === 'generate' ? (config?.dailyGenerates ?? 0) : (config?.dailyRevisions ?? 0);
@@ -300,6 +302,8 @@ export async function checkOperationalDailyLimit(
   userId: string,
   action: OperationalDailyAction,
 ): Promise<DailyLimitResult> {
+  // Self-hosted installs run on the owner's own subscription or keys, so nothing is capped.
+  if (!isHosted()) return { allowed: true, used: 0, limit: -1 };
   const plan = await getUserPlan(userId);
   const config = PLAN_CONFIG[plan];
   const limit = action === 'agent_route'
@@ -328,6 +332,8 @@ export async function checkOperationalDailyLimit(
 }
 
 export async function checkDailyScrapeLimit(userId: string): Promise<DailyLimitResult> {
+  // Self-hosted installs run on the owner's own subscription or keys, so nothing is capped.
+  if (!isHosted()) return { allowed: true, used: 0, limit: -1 };
   const plan = await getUserPlan(userId);
   const config = PLAN_CONFIG[plan];
   const clientSlots = config?.clientSlots ?? 1;

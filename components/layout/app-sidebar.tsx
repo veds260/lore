@@ -28,6 +28,7 @@ interface CreditState {
   isUnlimited: boolean;
   periodEnd: string;
   plan: string;
+  hosted?: boolean;
 }
 
 function CreditWidget({ collapsed }: { collapsed: boolean }) {
@@ -43,6 +44,8 @@ function CreditWidget({ collapsed }: { collapsed: boolean }) {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  if (credits && credits.hosted === false) return null;
 
   if (collapsed) {
     const label = credits?.isUnlimited

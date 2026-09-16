@@ -8,6 +8,7 @@ import { STRUCTURAL_RULES } from '@/lib/global-rules';
 import { SHORT_TEXT_BANS } from '@/lib/craft-rules';
 import { loadVoiceContext, formatVoiceSection } from '@/lib/voice-context';
 import { deductCredits } from '@/lib/credits';
+import { isHosted } from '@/lib/plans';
 import { xAvailable, xGet } from '@/lib/twitterapi';
 import { modelAvailable } from '@/lib/providers';
 
@@ -35,7 +36,7 @@ export interface Trend {
   };
 }
 
-// Max trend refreshes per day. Cheap (Gemini Flash) but prevents abuse.
+// Max trend refreshes per day on the hosted service. Self-hosted installs have no cap.
 const DAILY_TRENDS_LIMIT = 5;
 
 // Pull top viral tweets from the last 24h for a given niche query
@@ -221,7 +222,7 @@ export async function GET() {
     );
 
   const usedToday = countRow?.count ?? 0;
-  if (usedToday >= DAILY_TRENDS_LIMIT) {
+  if (isHosted() && usedToday >= DAILY_TRENDS_LIMIT) {
     return NextResponse.json(
       { error: 'Daily trend refresh limit reached', used: usedToday, limit: DAILY_TRENDS_LIMIT, type: 'daily_limit_reached' },
       { status: 429 },

@@ -116,6 +116,7 @@ interface CreditState {
   isUnlimited: boolean;
   periodEnd: string;
   plan: string;
+  hosted?: boolean;
   transactions: Array<{ id: string; delta: number; action: string; balanceAfter: number; createdAt: string }>;
 }
 
@@ -878,10 +879,10 @@ export function SettingsClient({ user }: { user: User }) {
       {/* Telegram */}
       <TelegramSection />
 
-      {/* Credits */}
-      <CreditsSection credits={credits} loading={creditsLoading} />
+      {/* Credits and plans only exist on the hosted service */}
+      {credits?.hosted !== false && <CreditsSection credits={credits} loading={creditsLoading} />}
 
-      {/* Plan */}
+      {credits?.hosted !== false && (
       <Section title="Plan">
         <div className="space-y-2">
           {PLANS.map(plan => {
@@ -934,6 +935,7 @@ export function SettingsClient({ user }: { user: User }) {
           </button>
         </p>
       </Section>
+      )}
     </div>
   );
 }

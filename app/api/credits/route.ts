@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getCredits, getRecentTransactions } from '@/lib/credits';
+import { isHosted } from '@/lib/plans';
 
 export async function GET() {
   const session = await auth();
@@ -17,6 +18,8 @@ export async function GET() {
     isUnlimited: credits.isUnlimited,
     periodEnd: credits.periodEnd,
     plan: credits.plan,
+    // Self-hosted installs have no plans or credits, so the app hides that UI.
+    hosted: isHosted(),
     transactions: transactions.map(t => ({
       id: t.id,
       delta: t.delta,
