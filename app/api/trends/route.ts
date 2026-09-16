@@ -8,6 +8,8 @@ import { STRUCTURAL_RULES } from '@/lib/global-rules';
 import { SHORT_TEXT_BANS } from '@/lib/craft-rules';
 import { loadVoiceContext, formatVoiceSection } from '@/lib/voice-context';
 import { deductCredits } from '@/lib/credits';
+import { xAvailable, xGet } from '@/lib/twitterapi';
+import { modelAvailable } from '@/lib/providers';
 
 export interface SourceTweet {
   id: string;
@@ -44,12 +46,9 @@ type RawViralTweet = {
   author?: { name?: string; userName?: string };
 };
 
-async function twitterSearch(query: string, key: string): Promise<RawViralTweet[]> {
+async function twitterSearch(query: string): Promise<RawViralTweet[]> {
   const params = new URLSearchParams({ query, queryType: 'Top' });
-  const res = await fetch(`https://api.twitterapi.io/twitter/tweet/advanced_search?${params}`, {
-    headers: { 'x-api-key': key },
-    signal: AbortSignal.timeout(12000),
-  });
+  const res = await xGet('/twitter/tweet/advanced_search', params, 12000);
   if (!res.ok) {
     console.error('[trends/qrt] twitterapi.io error:', res.status, query.slice(0, 80));
     return [];
@@ -90,11 +89,7 @@ function isQualityTweet(text: string): boolean {
 }
 
 async function fetchViralTweets(nicheQuery: string): Promise<SourceTweet[]> {
-  const key = process.env.TWITTERAPI_IO_KEY;
-  if (!key) {
-    console.error('[trends/qrt] TWITTERAPI_IO_KEY not set');
-    return [];
-  }
+  if (!(await xAvailable())) return [];
 
   const since24h = Math.floor((Date.now() - 24 * 60 * 60 * 1000) / 1000);
   console.log('[trends/qrt] searching:', nicheQuery);
@@ -105,15 +100,13 @@ async function fetchViralTweets(nicheQuery: string): Promise<SourceTweet[]> {
   try {
     let raw = await twitterSearch(
       `${nicheQuery} min_faves:100 ${exclusions} lang:en since_time:${since24h}`,
-      key,
     );
     console.log('[trends/qrt] min_faves:100 →', raw.length, 'tweets');
 
     if (raw.length === 0) {
       raw = await twitterSearch(
         `${nicheQuery} min_faves:20 ${exclusions} lang:en since_time:${since24h}`,
-        key,
-      );
+    );
       console.log('[trends/qrt] min_faves:20 →', raw.length, 'tweets');
     }
 
@@ -208,8 +201,8 @@ export async function GET() {
 
   const userId = session.user.id;
 
-  if (!process.env.OPENROUTER_API_KEY) {
-    return NextResponse.json({ error: 'AI not configured' }, { status: 500 });
+  if (!(await modelAvailable())) {
+    return NextResponse.json({ error: 'No model backend is set up. Open /setup to connect one.' }, { status: 503 });
   }
 
   // ── Daily cap: 5 refreshes per user per day ──────────────────────────────────

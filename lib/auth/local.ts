@@ -80,8 +80,9 @@ export function validEmail(email: string): boolean {
   return email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-// Failed attempts per email and per client, kept in memory. Ten misses in fifteen
-// minutes locks that pair out until the window passes.
+// Failed attempts per email, kept in memory. Ten misses in fifteen minutes locks
+// that email until the window passes. It is keyed on the email alone because a
+// client address can be faked through forwarding headers on an unproxied install.
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILS = 10;
 const fails = new Map<string, { since: number; n: number }>();
@@ -98,9 +99,18 @@ export function lockedOut(key: string): boolean {
 
 export function recordFailure(key: string): void {
   const f = fails.get(key);
-  if (!f || Date.now() - f.since > WINDOW_MS) fails.set(key, { since: Date.now(), n: 1 });
-  else f.n++;
-  if (fails.size > 10_000) fails.clear();
+  if (!f || Date.now() - f.since > WINDOW_MS) {
+    fails.delete(key);
+    fails.set(key, { since: Date.now(), n: 1 });
+  } else {
+    f.n++;
+  }
+  // Drop the oldest entries rather than wiping everything, which would reset real lockouts.
+  while (fails.size > 10_000) {
+    const oldest = fails.keys().next().value;
+    if (oldest === undefined) break;
+    fails.delete(oldest);
+  }
 }
 
 export function clearFailures(key: string): void {

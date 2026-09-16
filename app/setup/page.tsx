@@ -1,22 +1,11 @@
 import Link from 'next/link';
 import { runChecks, canRun, type Capability } from '@/lib/setup/checks';
-import { ownerExists } from '@/lib/setup/claim';
-import { auth } from '@/lib/auth';
+import { setupAccess } from '@/lib/setup/claim';
 import { relayTurnedOff } from '@/lib/relay/client';
 import { RelayUnlock } from '@/components/setup/relay-unlock';
 import { SetupShell, StepHeading } from '@/components/setup/setup-shell';
 
 export const dynamic = 'force-dynamic';
-
-// Reachable before sign-in only while the instance is unowned. Once an owner
-// exists it needs a session, so a public deploy cannot have its configuration
-// read by a stranger.
-async function gate(): Promise<'open' | 'denied'> {
-  const owned = await ownerExists();
-  if (!owned) return 'open';
-  const session = await auth();
-  return session?.user ? 'open' : 'denied';
-}
 
 const clean = (t: string) => t.replace(/\.$/, '');
 
@@ -160,13 +149,26 @@ export default async function SetupPage({
 }: {
   searchParams: Promise<{ step?: string; item?: string }>;
 }) {
-  if ((await gate()) === 'denied') {
+  const access = await setupAccess();
+  if (access === 'no-database') {
+    return (
+      <main className="min-h-screen grid place-items-center px-6">
+        <div className="max-w-md text-center">
+          <h1 className="text-lg font-semibold">Lore cannot reach its database</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Check that Postgres is running and DATABASE_URL in .env.local points at it, then run npm run doctor for details
+          </p>
+        </div>
+      </main>
+    );
+  }
+  if (access === 'denied') {
     return (
       <main className="min-h-screen grid place-items-center px-6">
         <div className="max-w-sm text-center">
           <h1 className="text-lg font-semibold">Setup is closed</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            This instance already has an owner, so sign in to see its configuration
+            Only the owner of this instance can open setup, so sign in with that account
           </p>
           <Link href="/login" className="mt-6 inline-block rounded-md bg-foreground px-4 py-2 text-sm text-background">
             Sign in

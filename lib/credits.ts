@@ -2,7 +2,7 @@ import { db } from './db';
 import { users, userCredits, creditTransactions } from './db/schema';
 import { eq, and, gte, desc } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
-import { PLAN_CONFIG } from './plans';
+import { PLAN_CONFIG, isHosted } from './plans';
 
 // Credit model: only unbounded premium features are credit-gated.
 // Hard-capped actions (generate, revise, interview, tts, stt) use their plan caps, not credits.
@@ -44,13 +44,21 @@ export type CreditAction = keyof typeof CREDIT_COSTS;
 // pro:    2000 credits
 // growth: 5000 credits
 // agency: -1 = unlimited
-export const PLAN_CREDITS: Record<string, number> = {
+const HOSTED_CREDITS: Record<string, number> = {
   free:   50,
   base:   0,
   pro:    2000,
   growth: 5000,
   agency: -1,
 };
+
+// Self-hosted installs are never short of credits, see isHosted().
+export const PLAN_CREDITS: Record<string, number> = new Proxy(HOSTED_CREDITS, {
+  get(target, tier) {
+    if (typeof tier !== 'string') return undefined;
+    return isHosted() ? target[tier] : -1;
+  },
+});
 
 export const PLAN_LABELS: Record<string, string> = {
   free:   'Free',

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { inviteCodes, users } from '@/lib/db/schema';
@@ -39,15 +39,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'This code has expired' }, { status: 410 });
   }
 
-  await db.transaction(async (tx) => {
+  // Claim the code first, conditionally, so two people redeeming at once cannot both win.
+  const claimed = await db.transaction(async (tx) => {
+    const [won] = await tx.update(inviteCodes)
+      .set({ redeemedBy: userId, redeemedAt: new Date() })
+      .where(and(eq(inviteCodes.id, invite.id), isNull(inviteCodes.redeemedBy)))
+      .returning({ id: inviteCodes.id });
+    if (!won) return false;
     await tx.update(users)
       .set({ planTier: invite.planTier })
       .where(eq(users.id, userId));
-
-    await tx.update(inviteCodes)
-      .set({ redeemedBy: userId, redeemedAt: new Date() })
-      .where(eq(inviteCodes.id, invite.id));
+    return true;
   });
+  if (!claimed) return NextResponse.json({ error: 'This code has already been used' }, { status: 409 });
 
   return NextResponse.json({ planTier: invite.planTier });
 }

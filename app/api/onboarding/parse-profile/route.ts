@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { callAI, parseJSON, MODEL_EXTRACT } from '@/lib/ai';
+import { modelAvailable } from '@/lib/providers';
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -10,8 +11,8 @@ export async function POST(req: NextRequest) {
   if (!markdown || typeof markdown !== 'string') {
     return NextResponse.json({ error: 'No markdown provided' }, { status: 400 });
   }
-  if (!process.env.OPENROUTER_API_KEY) {
-    return NextResponse.json({ error: 'OPENROUTER_API_KEY not set' }, { status: 500 });
+  if (!(await modelAvailable())) {
+    return NextResponse.json({ error: 'No model backend is set up. Open /setup to connect one.' }, { status: 503 });
   }
 
   const prompt = `You are extracting structured information from a personal bio, resume, LinkedIn export, or portfolio document to pre-fill an onboarding form for a content creation tool called Lore.

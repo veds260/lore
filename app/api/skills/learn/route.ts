@@ -8,6 +8,7 @@ import { callAI, parseJSON, MODEL_EXTRACT } from '@/lib/ai';
 import { SHORT_TEXT_BANS } from '@/lib/craft-rules';
 import { encryptSkillBody, decryptSkillBody } from '@/lib/skills-crypto';
 import { mirrorSelfLearningIntoVault } from '@/lib/vault/sync';
+import { modelAvailable } from '@/lib/providers';
 
 const VALID_KINDS = ['hook_formula', 'structure_template', 'voice_rule', 'format_rule', 'avoidance_rule'] as const;
 
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest) {
   if (!original?.trim() || !revised?.trim()) return NextResponse.json({ skill: null });
   if (original.trim() === revised.trim()) return NextResponse.json({ skill: null });
 
-  if (!process.env.OPENROUTER_API_KEY) return NextResponse.json({ skill: null });
+  if (!(await modelAvailable())) return NextResponse.json({ skill: null });
 
   // Resolve the brand the user is actually working in (cookie-backed), never
   // "newest active brand" (on agency accounts that wrote skills to the wrong brand).

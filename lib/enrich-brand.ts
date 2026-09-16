@@ -10,6 +10,7 @@ import { db } from './db';
 import { brands } from './db/schema';
 import { callAI, parseJSON, MODEL_EXTRACT } from './ai';
 import { recordCost } from './credits';
+import { modelAvailable } from '@/lib/providers';
 
 // The fixed taxonomy used by Settings → Content Pillars. Must stay in sync with
 // ALL_CATEGORIES in app/(app)/settings/settings-client.tsx.
@@ -62,7 +63,7 @@ function fallbackCategoriesForVibe(vibe?: string): CategoryId[] {
 // Run AI extraction over the user's freeform answers to derive structured fields.
 // Falls back silently on any error, the caller has already saved the brand.
 export async function enrichBrand(input: EnrichInput): Promise<void> {
-  if (!process.env.OPENROUTER_API_KEY) {
+  if (!(await modelAvailable())) {
     // No AI, at least drop the heuristic categories in so the value isn't empty
     await db.update(brands)
       .set({ selectedCategories: fallbackCategoriesForVibe(input.vibe), updatedAt: new Date() })

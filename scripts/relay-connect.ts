@@ -19,7 +19,7 @@ async function main() {
   const { credits } = await connectRelay();
   const balance = await relayBalance().catch(() => null);
   if (balance && !balance.unlocked) {
-    console.log(`Connected to the shared relay. Follow @${balance.followHandle} on X, then unlock your free credits on the setup page.`);
+    console.log('Connected to the shared relay. Unlock your free credits on the setup page, under Extras.');
   } else {
     console.log(`Connected to the shared relay, ${credits} credits.`);
   }

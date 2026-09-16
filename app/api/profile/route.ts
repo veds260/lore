@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { brands, users } from '@/lib/db/schema';
 import { and, desc, eq } from 'drizzle-orm';
 import { getActiveBrandId } from '@/lib/active-brand';
+import { isHosted } from '@/lib/plans';
 
 export async function GET() {
   const session = await auth();
@@ -54,5 +55,6 @@ export async function GET() {
     allowUnhingedMode: brand?.allowUnhingedMode ?? false,
     mainstreamNewsEnabled: brand?.mainstreamNewsEnabled ?? false,
     planTier: user?.planTier ?? 'free',
+    inviteRequired: isHosted(),
   });
 }

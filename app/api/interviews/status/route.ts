@@ -3,13 +3,8 @@ import { and, eq, sql } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { interviewSessions, users } from '@/lib/db/schema';
+import { PLAN_CONFIG } from '@/lib/plans';
 
-const PLAN_QUOTA: Record<string, number> = {
-  free:   0,
-  base:   2,
-  pro:    5,
-  agency: 9999,
-};
 
 function billingPeriod(): string {
   const now = new Date();
@@ -30,7 +25,7 @@ export async function GET() {
     .limit(1);
 
   const planTier = user?.planTier ?? 'free';
-  const quota = PLAN_QUOTA[planTier] ?? 0;
+  const quota = PLAN_CONFIG[planTier]?.monthlyInterviews ?? 0;
   const isUnlimited = quota >= 9999;
 
   const [{ count }] = await db

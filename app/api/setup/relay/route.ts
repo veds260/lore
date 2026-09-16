@@ -1,16 +1,14 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
-import { ownerExists } from '@/lib/setup/claim';
+import { setupAccess } from '@/lib/setup/claim';
 import { connectRelay, relayBalance, RelayError } from '@/lib/relay/client';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Same gate as /setup: open while the instance has no owner, then owner session only.
+// Same gate as /setup: open while the instance has no owner, then the owner only.
 async function allowed(): Promise<boolean> {
-  if (!(await ownerExists())) return true;
-  const session = await auth();
-  return Boolean(session?.user);
+  const access = await setupAccess();
+  return access === 'open' || access === 'owner';
 }
 
 function failure(err: unknown) {

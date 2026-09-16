@@ -1,5 +1,5 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { and, eq, gt, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { users, verificationTokens } from '@/lib/db/schema';
 import { MIN_PASSWORD, createSession, hashPassword, validEmail } from '@/lib/auth/local';
@@ -103,11 +103,21 @@ export async function claimInstance(input: ClaimInput): Promise<ClaimResult> {
   return { ok: true, sessionToken: await createSession(user.id) };
 }
 
-export async function ownerExists(): Promise<boolean> {
+export type SetupAccess = 'open' | 'owner' | 'denied' | 'no-database';
+
+/**
+ * Who may see setup. Open while nobody owns the instance, then only the owner,
+ * the first account created. A database it cannot read never counts as open.
+ */
+export async function setupAccess(): Promise<SetupAccess> {
+  let owner: { id: string } | undefined;
   try {
-    const [row] = await db.select({ id: users.id }).from(users).limit(1);
-    return Boolean(row);
+    [owner] = await db.select({ id: users.id }).from(users).orderBy(asc(users.createdAt)).limit(1);
   } catch {
-    return false;
+    return 'no-database';
   }
+  if (!owner) return 'open';
+  const { auth } = await import('@/lib/auth');
+  const session = await auth();
+  return session?.user?.id === owner.id ? 'owner' : 'denied';
 }

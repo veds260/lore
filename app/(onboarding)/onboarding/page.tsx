@@ -385,7 +385,7 @@ export default function OnboardingPage() {
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data) return;
-        if (data.planTier && data.planTier !== 'free') setCodeAccepted(true);
+        if (data.inviteRequired === false || (data.planTier && data.planTier !== 'free')) setCodeAccepted(true);
         if (data.brandId && !isNewBrand) { setHasBrand(true); setStep(TOTAL - 1); setMethod('wizard'); }
       })
       .catch(() => {})

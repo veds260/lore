@@ -13,7 +13,7 @@ export interface PlanLimits {
   clientSlots: number;           // brand slots (agency only)
 }
 
-export const PLAN_CONFIG: Record<string, PlanLimits> = {
+const HOSTED_PLANS: Record<string, PlanLimits> = {
   // Free: trial only, no card required
   free: {
     dailyGenerates:       1,
@@ -78,3 +78,31 @@ export const PLAN_CONFIG: Record<string, PlanLimits> = {
 
 // dailyGenerates / dailyRevisions are per-user caps, not per-brand.
 // dailyScrapesPerBrand caps manual scraping for all tiers incl. agency.
+
+/**
+ * Plans, credits and invite codes only exist on the maintainer's hosted service,
+ * which sets LORE_HOSTED=true. A self-hosted install runs on its owner's own model
+ * and keys, so nothing there is capped by plan.
+ */
+export function isHosted(): boolean {
+  return process.env.LORE_HOSTED === 'true';
+}
+
+const SELF_HOSTED: PlanLimits = {
+  dailyGenerates:       9999,
+  dailyRevisions:       9999,
+  monthlyInterviews:    9999,
+  monthlyCredits:       -1,
+  dailyScrapesPerBrand: 9999,
+  agentMessagesPerDay:  9999,
+  voiceMemosPerDay:     9999,
+  timelineFeature:      true,
+  clientSlots:          25,
+};
+
+export const PLAN_CONFIG: Record<string, PlanLimits> = new Proxy(HOSTED_PLANS, {
+  get(target, tier) {
+    if (typeof tier !== 'string') return undefined;
+    return isHosted() ? target[tier] : SELF_HOSTED;
+  },
+});

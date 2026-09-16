@@ -23,7 +23,7 @@ interface XResponse {
 // One way out to twitterapi.io. Your own key goes direct. Without one, the shared
 // relay forwards the same path and params and returns the same JSON. With
 // neither, X lookups are off.
-async function xGet(path: string, params: URLSearchParams, timeoutMs?: number): Promise<XResponse> {
+export async function xGet(path: string, params: URLSearchParams, timeoutMs?: number): Promise<XResponse> {
   const key = process.env.TWITTERAPI_IO_KEY;
   if (key) {
     return fetch(`${BASE}${path}?${params}`, {

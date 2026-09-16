@@ -6,6 +6,7 @@ import { brands } from '@/lib/db/schema';
 import { getActiveBrandId } from '@/lib/active-brand';
 import { callAI, parseJSON, MODEL_EXTRACT } from '@/lib/ai';
 import { z } from 'zod';
+import { modelAvailable } from '@/lib/providers';
 
 const Schema = z.object({
   markdown: z.string().min(20).max(60000),
@@ -49,8 +50,8 @@ export async function POST(req: NextRequest) {
 
   if (!brand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
 
-  if (!process.env.OPENROUTER_API_KEY) {
-    return NextResponse.json({ error: 'OPENROUTER_API_KEY not set' }, { status: 503 });
+  if (!(await modelAvailable())) {
+    return NextResponse.json({ error: 'No model backend is set up. Open /setup to connect one.' }, { status: 503 });
   }
 
   // Extraction prompt, same shape as parse-profile but tuned for "augment existing"

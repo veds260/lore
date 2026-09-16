@@ -12,6 +12,7 @@ import { applyRulesFix } from '@/lib/rules-fixer';
 import { checkDailyLimit } from '@/lib/credits';
 import { decryptSkillBody } from '@/lib/skills-crypto';
 import { detectEditPreference } from '@/lib/learning/edit-preferences';
+import { modelAvailable } from '@/lib/providers';
 
 // Detect the structural fingerprint of a post so the revise prompt can tell the
 // model to preserve it. Each detected beat becomes a hard preservation rule.
@@ -103,8 +104,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'content and instruction are required' }, { status: 400 });
   }
 
-  if (!process.env.OPENROUTER_API_KEY) {
-    return NextResponse.json({ error: 'OPENROUTER_API_KEY not set' }, { status: 500 });
+  if (!(await modelAvailable())) {
+    return NextResponse.json({ error: 'No model backend is set up. Open /setup to connect one.' }, { status: 503 });
   }
 
   const activeBrandId = await getActiveBrandId(userId);

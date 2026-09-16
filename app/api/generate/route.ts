@@ -26,6 +26,7 @@ import {
 import { ensureVaultMirrored } from '@/lib/vault/sync';
 import { buildDraftSourceInputs, planPost } from '@/lib/agents/post-strategist';
 import { isAutoRotationEligible } from '@/lib/pattern-categories';
+import { modelAvailable } from '@/lib/providers';
 
 // LENGTH_GUIDE, FullPattern, deriveMirrorSpec, buildTemplateInstructions, enforceTwitterBreaks, and
 // CONTENT_STYLE_DIRECTIVE now live in lib/post-prompt.ts (shared with the connector). buildPrompt too.
@@ -44,8 +45,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Cannot modify demo content' }, { status: 400 });
   }
 
-  if (!process.env.OPENROUTER_API_KEY) {
-    return NextResponse.json({ error: 'OPENROUTER_API_KEY not set' }, { status: 500 });
+  if (!(await modelAvailable())) {
+    return NextResponse.json({ error: 'No model backend is set up. Open /setup to connect one.' }, { status: 503 });
   }
 
   const userId = session.user.id;

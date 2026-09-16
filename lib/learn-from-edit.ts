@@ -2,6 +2,7 @@ import { db } from '@/lib/db';
 import { skills } from '@/lib/db/schema';
 import { callAI, parseJSON, MODEL_EXTRACT } from '@/lib/ai';
 import { encryptSkillBody } from '@/lib/skills-crypto';
+import { modelAvailable } from '@/lib/providers';
 
 const VALID_KINDS = ['hook_formula', 'structure_template', 'voice_rule', 'format_rule', 'avoidance_rule'] as const;
 type SkillKind = typeof VALID_KINDS[number];
@@ -31,7 +32,7 @@ export async function learnFromEdit(opts: {
   const revised = (opts.revised || '').trim();
   if (!original || !revised) return { learned: false, reason: 'missing text' };
   if (original === revised) return { learned: false, reason: 'no change' };
-  if (!process.env.OPENROUTER_API_KEY) return { learned: false, reason: 'no model key' };
+  if (!(await modelAvailable())) return { learned: false, reason: 'no model backend' };
 
   const platformLabel = opts.platform === 'linkedin' ? 'LinkedIn' : 'X (Twitter)';
   const prompt = `A writer took an AI-generated ${platformLabel} draft and edited it before shipping it.

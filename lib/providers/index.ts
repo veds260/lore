@@ -87,6 +87,16 @@ async function resolveVisionProvider(): Promise<Provider> {
   return cachedVision;
 }
 
+/** True when some backend can answer, either an agent CLI on PATH or an API key. */
+export async function modelAvailable(): Promise<boolean> {
+  try {
+    await resolveProvider();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function generate(opts: GenerateOptions): Promise<string> {
   const provider = opts.role === 'vision' ? await resolveVisionProvider() : await resolveProvider();
   return provider.generate(opts);

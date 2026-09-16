@@ -111,10 +111,7 @@ export async function downloadFile(fileId: string): Promise<Blob | null> {
 // Transcribe a voice blob via Groq Whisper (same model used elsewhere in the app).
 export async function transcribeVoice(blob: Blob): Promise<string | null> {
   const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    console.error('[telegram] GROQ_API_KEY not set — cannot transcribe');
-    return null;
-  }
+  if (!apiKey) return transcribeThroughRelay(blob);
   try {
     const form = new FormData();
     form.append('file', blob, 'voice.ogg');
@@ -143,4 +140,23 @@ export function generateLinkToken(): string {
   const arr = new Uint8Array(16);
   crypto.getRandomValues(arr);
   return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Without a Groq key, voice notes go through the shared relay when one is connected.
+async function transcribeThroughRelay(blob: Blob): Promise<string | null> {
+  const { activeRelayKey, relayFetch } = await import('./relay/client');
+  if (!(await activeRelayKey())) {
+    console.error('[telegram] no GROQ_API_KEY and no shared relay, cannot transcribe');
+    return null;
+  }
+  try {
+    const form = new FormData();
+    form.append('audio', blob, 'voice.ogg');
+    const res = await relayFetch('/voice/stt', { method: 'POST', body: form, timeoutMs: 65_000 });
+    const data = (await res.json()) as { transcript?: string };
+    return data.transcript?.trim() || null;
+  } catch (err) {
+    console.error('[telegram] relay transcription failed:', err instanceof Error ? err.message : err);
+    return null;
+  }
 }
