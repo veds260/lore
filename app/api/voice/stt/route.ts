@@ -111,6 +111,9 @@ async function relayStt(audio: Blob) {
     return NextResponse.json({ transcript: data.transcript?.trim() ?? '' });
   } catch (err) {
     if (err instanceof RelayError) {
+      if (err.code === 'locked') {
+        return NextResponse.json({ error: 'Unlock the shared relay credits in Setup, under Extras' }, { status: 402 });
+      }
       if (err.code === 'out_of_credits') {
         return NextResponse.json({ error: 'The shared relay is out of credits for this install' }, { status: 402 });
       }

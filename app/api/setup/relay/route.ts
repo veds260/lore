@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { ownerExists } from '@/lib/setup/claim';
-import { connectRelay, relayBalance, RelayError } from '@/lib/relay/client';
+import { connectRelay, relayBalance, RelayError, unlockRelay } from '@/lib/relay/client';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -39,6 +39,17 @@ export async function GET() {
   try {
     const balance = await relayBalance();
     return NextResponse.json({ connected: Boolean(balance), balance });
+  } catch (err) {
+    return failure(err);
+  }
+}
+
+export async function PUT(req: Request) {
+  if (!(await allowed())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const body = (await req.json().catch(() => ({}))) as { handle?: unknown };
+  const handle = typeof body.handle === 'string' ? body.handle.slice(0, 40) : '';
+  try {
+    return NextResponse.json(await unlockRelay(handle));
   } catch (err) {
     return failure(err);
   }

@@ -81,8 +81,9 @@ Groq. So you can try them first, the maintainer runs a small relay that makes th
 calls for each install on a limited number of free credits. Credits follow what a
 call really costs, so a long voice clip uses more than a profile lookup, and the keys
 themselves never leave the relay.
-The installer connects you automatically, and `npm run relay:connect` does the same
-by hand.
+The installer connects you automatically. The 200 starter credits unlock once you
+follow [@vedsayys](https://x.com/vedsayys) on X and enter your handle on the setup
+page, and each X account unlocks one install.
 
 Your own key always wins. Set `TWITTERAPI_IO_KEY`, `FISH_AUDIO_API_KEY` or
 `GROQ_API_KEY` and that feature stops using the relay. The relay only ever sees X
@@ -154,7 +155,7 @@ npm run db:push         # apply the schema
 npm run db:studio       # browse the data
 npm run worker          # the background agent, off unless AGENT_ENABLED=true
 npm run telegram:pair   # link a Telegram chat to a brand
-npm run relay:connect   # free starter credits on the shared relay
+npm run relay:connect   # connect to the shared relay
 npm run password:reset  # set a new password for an account
 npm run mcp             # the MCP server, for Claude and other MCP clients
 npm test                # unit tests

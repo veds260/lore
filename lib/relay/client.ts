@@ -1,8 +1,8 @@
 /**
  * Client for the shared Lore relay.
  *
- * Installs without their own X or Fish Audio keys can borrow the maintainer's
- * through the relay, on limited per-install credits. The user's own key always
+ * Installs without their own X, Fish Audio or Groq keys can use the maintainer's
+ * through the relay, on limited per-install credits that unlock with a follow on X. The user's own key always
  * wins; the relay is only used when that key is missing, a relay key exists and
  * LORE_RELAY is not `off`. Contract: RELAY-CONTRACT.md in the publish repo.
  *
@@ -17,6 +17,9 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 export type RelayErrorCode =
   | 'bad_request'
   | 'unauthorized'
+  | 'locked'
+  | 'not_following'
+  | 'handle_taken'
   | 'out_of_credits'
   | 'rate_limited'
   | 'daily_cap'
@@ -24,7 +27,7 @@ export type RelayErrorCode =
   | 'upstream';
 
 const CODES: readonly RelayErrorCode[] = [
-  'bad_request', 'unauthorized', 'out_of_credits', 'rate_limited', 'daily_cap', 'disabled', 'upstream',
+  'bad_request', 'unauthorized', 'locked', 'not_following', 'handle_taken', 'out_of_credits', 'rate_limited', 'daily_cap', 'disabled', 'upstream',
 ];
 
 export class RelayError extends Error {
@@ -70,7 +73,9 @@ export async function getRelayKey(): Promise<string | null> {
   } catch {
     value = null;
   }
-  keyCache = { value, at: Date.now() };
+  // Only a found key is cached. Route handlers and pages are separate module
+  // instances, so a cached miss would hide a key another one just saved.
+  keyCache = value ? { value, at: Date.now() } : null;
   return value;
 }
 
@@ -137,9 +142,14 @@ export function relayCreditsFrom(res: { headers: Headers }): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+export const DEFAULT_FOLLOW_HANDLE = 'vedsayys';
+
 export interface RelayBalance {
   credits: number;
   granted: number;
+  /** False until the install proves an X account that follows the maintainer. */
+  unlocked: boolean;
+  followHandle: string;
 }
 
 /** Null when the relay is off or there is no key. Throws when the call fails. */
@@ -150,7 +160,17 @@ export async function relayBalance(): Promise<RelayBalance | null> {
   return {
     credits: Number(data.credits ?? 0),
     granted: Number(data.granted ?? 0),
+    unlocked: data.unlocked !== false,
+    followHandle: typeof data.followHandle === 'string' && data.followHandle ? data.followHandle : DEFAULT_FOLLOW_HANDLE,
   };
+}
+
+/** Unlocks the starter credits with an X handle that follows the maintainer. Connects first if needed. */
+export async function unlockRelay(handle: string): Promise<{ credits: number; granted: number }> {
+  if (!(await getRelayKey())) await connectRelay();
+  const res = await relayFetch('/unlock', { method: 'POST', body: JSON.stringify({ handle }), timeoutMs: 30_000 });
+  const data = (await res.json()) as { credits?: unknown; granted?: unknown };
+  return { credits: Number(data.credits ?? 0), granted: Number(data.granted ?? 0) };
 }
 
 export async function connectRelay(): Promise<{ credits: number }> {

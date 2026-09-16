@@ -84,7 +84,7 @@ if [ "$DB_READY" = yes ]; then
 fi
 
 if [ "$DB_READY" = yes ] && [ "${LORE_RELAY:-}" != off ]; then
-  step "connecting to the shared relay for free starter credits (LORE_RELAY=off skips this)"
+  step "connecting to the shared relay (LORE_RELAY=off skips this)"
   npm run --silent relay:connect 2>&1 | sed 's/^/  /' || true
 fi
 

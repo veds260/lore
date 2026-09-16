@@ -1,15 +1,15 @@
 /**
  * `npm run relay:connect` connects this install to the shared relay.
  *
- * The relay lends X lookups, voice and the template library to installs that
- * have not set their own keys, on limited free credits. Running this twice is
+ * The relay makes X lookups, voice and transcription calls for installs that
+ * have not set their own keys. Its free credits unlock after a follow on X. Running this twice is
  * safe: an install that already has a key just prints its balance.
  * Set LORE_RELAY=off to opt out entirely.
  */
 import '../lib/load-env';
 
 async function main() {
-  const { connectRelay, relayTurnedOff } = await import('../lib/relay/client');
+  const { connectRelay, relayBalance, relayTurnedOff } = await import('../lib/relay/client');
 
   if (relayTurnedOff()) {
     console.log('The shared relay is turned off with LORE_RELAY=off, so there is nothing to connect.');
@@ -17,7 +17,12 @@ async function main() {
   }
 
   const { credits } = await connectRelay();
-  console.log(`Connected to the shared relay, ${credits} credits.`);
+  const balance = await relayBalance().catch(() => null);
+  if (balance && !balance.unlocked) {
+    console.log(`Connected to the shared relay. Follow @${balance.followHandle} on X, then unlock your free credits on the setup page.`);
+  } else {
+    console.log(`Connected to the shared relay, ${credits} credits.`);
+  }
   process.exit(0);
 }
 

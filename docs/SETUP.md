@@ -144,10 +144,10 @@ Voice interviews need [Fish Audio](https://fish.audio) for speech and [Groq](htt
 If you have not set `TWITTERAPI_IO_KEY`, `FISH_AUDIO_API_KEY` or `GROQ_API_KEY`, Lore can make those calls through a shared relay run by the maintainer, on limited free credits. A credit is about a tenth of a cent of real cost, so bigger calls use more. The keys stay on the relay.
 
 ```bash
-npm run relay:connect   # prints how many credits you got
+npm run relay:connect   # connects this install to the relay
 ```
 
-The Connect button on `/setup` does the same thing. The key is saved in your database, or you can set `LORE_RELAY_KEY` yourself.
+The credits start locked. Follow [@vedsayys](https://x.com/vedsayys) on X, then open `/setup`, go to Extras, pick Shared relay and enter your X handle. Lore checks the follow and unlocks 200 credits, once per X account. The key is saved in your database, or you can set `LORE_RELAY_KEY` yourself.
 
 Your own keys always take priority. The relay sees X handles and search queries, the text being spoken, voice answers while they are transcribed, and your relay key, and never your drafts, database or prompts. To switch it off, put `LORE_RELAY=off` in `.env.local`.
 

@@ -2,8 +2,8 @@ import Link from 'next/link';
 import { runChecks, canRun, type Capability } from '@/lib/setup/checks';
 import { ownerExists } from '@/lib/setup/claim';
 import { auth } from '@/lib/auth';
-import { relayTurnedOff } from '@/lib/relay/client';
-import { RelayConnectButton } from '@/components/setup/relay-connect-button';
+import { DEFAULT_FOLLOW_HANDLE, relayTurnedOff } from '@/lib/relay/client';
+import { RelayUnlock } from '@/components/setup/relay-unlock';
 import { SetupShell, StepHeading } from '@/components/setup/setup-shell';
 
 export const dynamic = 'force-dynamic';
@@ -38,12 +38,12 @@ const WORD: Record<Capability['status'], string> = {
 function Fix({ cap }: { cap: Capability }) {
   return (
     <>
-      {cap.fix && (
+      {cap.fix && cap.id !== 'relay' && (
         <pre className="mt-4 max-h-[240px] overflow-auto rounded-md border border-border bg-card p-3.5 text-[12px] leading-relaxed text-foreground/85 whitespace-pre-wrap">
 {cap.fix.join('\n')}
         </pre>
       )}
-      {cap.id === 'relay' && !relayTurnedOff() && <RelayConnectButton />}
+      {cap.id === 'relay' && !relayTurnedOff() && <RelayUnlock followHandle={DEFAULT_FOLLOW_HANDLE} />}
     </>
   );
 }
@@ -112,9 +112,11 @@ function ExtrasStep({ optional, item }: { optional: Capability[]; item?: string 
           <>
             {open.detail && <p className="mt-4 text-sm text-muted-foreground">{open.detail}</p>}
             <Fix cap={open} />
-            <div className="mt-6">
-              <Link href={`/setup?step=extras&item=${open.id}`} className={SECONDARY}>Check again</Link>
-            </div>
+            {open.id !== 'relay' && (
+              <div className="mt-6">
+                <Link href={`/setup?step=extras&item=${open.id}`} className={SECONDARY}>Check again</Link>
+              </div>
+            )}
           </>
         )}
       </>
@@ -130,7 +132,7 @@ function ExtrasStep({ optional, item }: { optional: Capability[]; item?: string 
         sub={`${on} of ${optional.length} are on. Skip any of them, this page is here whenever you want to add one`}
       />
       <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-        {optional.map((c) => (
+        {[...optional].sort((a, b) => Number(b.id === 'relay' && b.status !== 'ok') - Number(a.id === 'relay' && a.status !== 'ok')).map((c) => (
           <Link
             key={c.id}
             href={`/setup?step=extras&item=${c.id}`}
