@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { access, constants } from 'node:fs/promises';
+import { access, constants, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { GenerateOptions, Provider } from './types';
@@ -10,36 +10,53 @@ import { ProviderError } from './types';
  * No API key, no per-token cost to them beyond the subscription they already pay for.
  */
 
-type CliKind = 'claude' | 'codex';
+export type CliKind = 'claude' | 'codex';
 
 interface CliSpec {
   bin: string;
   label: string;
-  /** Builds argv for a single non-interactive completion. */
-  args(prompt: string): string[];
-  /** Some CLIs wrap their answer; pull the text back out. */
-  parse(stdout: string): string;
+  /** Which subscription it runs on, for the setup screen. */
+  plan: string;
+  /** The command that fixes a missing or expired login. */
+  login: string;
+  /** Builds argv for a single non-interactive completion. `outFile` is a scratch file the CLI may write its answer to. */
+  args(outFile: string): string[];
+  /** Pull the answer back out, from stdout or the scratch file. */
+  parse(stdout: string, outFile: string): Promise<string>;
 }
 
 const SPECS: Record<CliKind, CliSpec> = {
   claude: {
     bin: 'claude',
     label: 'Claude Code',
+    plan: 'your Claude subscription',
+    login: 'claude',
     // -p prints one response and exits. The prompt goes on stdin, so it can be any
     // length and never has to survive shell quoting.
-    // --allowedTools with an empty set is the important part: Lore feeds third-party
-    // text (tweets, reddit threads, scraped pages) into these prompts, and without it
-    // a crafted post could talk the agent into using its file or shell tools.
-    args: () => ['-p', '--allowedTools', ''],
-    parse: (out) => out.trim(),
+    // --tools '' is the important part: Lore feeds third-party text (tweets, threads,
+    // scraped pages) into these prompts, and without it a crafted post could talk the
+    // agent into using its file or shell tools.
+    // The rest keeps the user's own Claude Code setup out of Lore's writing: no hooks
+    // or settings, no CLAUDE.md, no MCP servers starting up, no saved sessions.
+    args: () => [
+      '-p', '--tools', '', '--strict-mcp-config', '--setting-sources', '',
+      '--no-session-persistence', '--disable-slash-commands',
+    ],
+    parse: async (out) => out.trim(),
   },
   codex: {
     bin: 'codex',
     label: 'Codex',
+    plan: 'your ChatGPT subscription',
+    login: 'codex login',
     // We run from a temp dir, which codex refuses by default as untrusted.
-    // read-only sandbox for the same reason claude gets an empty tool list.
-    args: () => ['exec', '--skip-git-repo-check', '--sandbox', 'read-only', '-'],
-    parse: (out) => out.trim(),
+    // read-only sandbox for the same reason claude gets no tools. Codex prints its
+    // progress to stdout, so the final answer is read from the -o file instead.
+    args: (outFile) => [
+      'exec', '--skip-git-repo-check', '--sandbox', 'read-only', '--ephemeral',
+      '--color', 'never', '-o', outFile, '-',
+    ],
+    parse: async (_out, outFile) => (await readFile(outFile, 'utf8').catch(() => '')).trim(),
   },
 };
 
@@ -58,6 +75,11 @@ async function onPath(bin: string): Promise<string | null> {
 }
 
 /** Returns the CLIs actually available on this machine, in preference order. */
+export function cliInfo(kind: CliKind): { label: string; plan: string; login: string } {
+  const { label, plan, login } = SPECS[kind];
+  return { label, plan, login };
+}
+
 export async function detectClis(): Promise<CliKind[]> {
   const found: CliKind[] = [];
   for (const kind of ['claude', 'codex'] as CliKind[]) {
@@ -85,7 +107,26 @@ function childEnv(): NodeJS.ProcessEnv {
   return env as NodeJS.ProcessEnv;
 }
 
-function run(bin: string, args: string[], input: string, timeoutMs: number): Promise<string> {
+// The web app can fire several requests at once. Each one here is a whole agent
+// process on the user's machine and counts against their subscription limits, so
+// only a few run at a time and the rest wait their turn.
+const MAX_PARALLEL = Math.max(1, Number(process.env.LORE_CLI_CONCURRENCY) || 3);
+let running = 0;
+const waiting: Array<() => void> = [];
+
+async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (running >= MAX_PARALLEL) await new Promise<void>((resolve) => waiting.push(resolve));
+  running++;
+  try {
+    return await fn();
+  } finally {
+    running--;
+    waiting.shift()?.();
+  }
+}
+
+function run(spec: CliSpec, args: string[], input: string, timeoutMs: number): Promise<string> {
+  const bin = spec.bin;
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -102,7 +143,7 @@ function run(bin: string, args: string[], input: string, timeoutMs: number): Pro
       if (settled) return;
       settled = true;
       child.kill('SIGKILL');
-      reject(new ProviderError(`${bin} did not respond within ${Math.round(timeoutMs / 1000)}s`, 'cli'));
+      reject(new ProviderError(`${spec.label} did not answer within ${Math.round(timeoutMs / 1000)}s. Try again, it can be slow when busy.`, 'cli'));
     }, timeoutMs);
 
     child.stdout.on('data', (d) => { stdout += d.toString(); });
@@ -112,7 +153,7 @@ function run(bin: string, args: string[], input: string, timeoutMs: number): Pro
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      reject(new ProviderError(`could not start ${bin}: ${err.message}`, 'cli', true));
+      reject(new ProviderError(`Could not start ${spec.label} (${bin}): ${err.message}`, 'cli', true));
     });
 
     child.on('close', (code) => {
@@ -123,23 +164,31 @@ function run(bin: string, args: string[], input: string, timeoutMs: number): Pro
       // An expired or missing login is the most common failure by far, and the user
       // can fix it in one command, so name it instead of surfacing an exit code.
       // Checked even on exit 0: some CLIs print an auth error and still exit clean.
-      const blob = `${stderr}\n${stdout}`;
-      const looksUnauthed = /log ?in|sign in|unauthor|401|credential|access token|expired/i.test(blob);
-      if (looksUnauthed) {
+      const blob = `${stderr}\n${code === 0 ? '' : stdout}`;
+      const looksUnauthed = /not logged in|log ?in again|sign in again|please (log|sign) ?in|unauthori[sz]ed|401|invalid api key|credential|access token|token (has )?expired|refresh token/i.test(blob);
+      if (looksUnauthed && (code !== 0 || !stdout.trim())) {
         reject(new ProviderError(
-          `${bin} is installed but not signed in. Run \`${bin}\` once in a terminal, sign in, then retry.`,
+          `${spec.label} is installed but not signed in. Run \`${spec.login}\` in a terminal, sign in, then try again.`,
           'cli',
           true,
         ));
         return;
       }
 
+      if (/usage limit|rate limit (reached|exceeded)|you've hit your|quota exceeded|too many requests|exceeded your (current )?quota/i.test(blob) && code !== 0) {
+        reject(new ProviderError(
+          `${spec.label} hit the usage limit on ${spec.plan}. Wait for it to reset, or switch models in setup.`,
+          'cli',
+          true,
+        ));
+        return;
+      }
       if (code === 0) {
         resolve(stdout);
         return;
       }
       reject(new ProviderError(
-        `${bin} exited with code ${code}: ${stderr.trim().slice(0, 400)}`,
+        `${spec.label} stopped with an error: ${(stderr.trim() || stdout.trim()).split('\n').slice(-3).join(' ').slice(0, 300)}`,
         'cli',
       ));
     });
@@ -166,10 +215,18 @@ export function createCliProvider(kind: CliKind): Provider {
           true,
         );
       }
-      const out = await run(spec.bin, spec.args(opts.prompt), opts.prompt, opts.timeoutMs ?? 120_000);
-      const text = spec.parse(out);
-      if (!text) throw new ProviderError(`${spec.bin} returned an empty response`, 'cli');
-      return text;
+      return withSlot(async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'lore-cli-'));
+        const outFile = join(dir, 'answer.txt');
+        try {
+          const out = await run(spec, spec.args(outFile), opts.prompt, opts.timeoutMs ?? 180_000);
+          const text = await spec.parse(out, outFile);
+          if (!text) throw new ProviderError(`${spec.label} returned an empty response`, 'cli');
+          return text;
+        } finally {
+          await rm(dir, { recursive: true, force: true }).catch(() => {});
+        }
+      });
     },
   };
 }

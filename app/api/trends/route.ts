@@ -311,7 +311,7 @@ export async function GET() {
 These are the actual posts getting traction RIGHT NOW. Read them, then extract 3 conversation angles that emerge from this data — patterns, debates, counterintuitive observations.
 
 ${viralTweets.slice(0, 10).map((t, i) => `${i + 1}. [${t.likeCount.toLocaleString()} likes · @${t.authorHandle}]\n   "${t.text.replace(/\n+/g, ' ').slice(0, 240)}"`).join('\n\n')}`
-    : `(No viral tweets fetched — generate generic timely topics in the "${niche}" space.)`;
+    : '';
 
   const prompt = `Today is ${today}.
 
@@ -333,7 +333,7 @@ ${viralTweets.length > 0
 
 For each angle:
 - headline: punchy, specific (max 10 words). No dates or years.
-- context: one sentence describing the pattern observed in the tweets. No market commentary, no invented years.
+- context: ${viralTweets.length > 0 ? 'one sentence describing the pattern observed in the tweets' : "one sentence on why this matters to the creator's audience right now"}. No market commentary, no invented years, and never mention tweets, data or what you were or were not given.
 - angle: the content approach that would land best (e.g. "contrarian take", "share a personal story", "break down the data", "hot take", "tactical breakdown")
 
 ${SHORT_TEXT_BANS}

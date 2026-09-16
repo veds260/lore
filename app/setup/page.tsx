@@ -4,6 +4,7 @@ import { setupAccess } from '@/lib/setup/claim';
 import { relayTurnedOff } from '@/lib/relay/client';
 import { RelayUnlock } from '@/components/setup/relay-unlock';
 import { SetupShell, StepHeading } from '@/components/setup/setup-shell';
+import { ModelPicker } from '@/components/setup/model-picker';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,23 +38,17 @@ function Fix({ cap }: { cap: Capability }) {
   );
 }
 
-function ModelStep({ required, ready }: { required: Capability[]; ready: boolean }) {
-  const todo = required.filter((c) => c.status !== 'ok');
+function ModelStep({ required }: { required: Capability[] }) {
+  const database = required.find((c) => c.id === 'database');
 
-  if (!ready) {
-    const cap = todo[0];
+  if (database && database.status !== 'ok') {
     return (
       <>
-        <StepHeading
-          eyebrow="Step 2 of 4"
-          title={cap.id === 'database' ? 'Connect the database' : 'Connect a model'}
-          sub={clean(cap.unlocks)}
-        />
-        {cap.detail && <p className="mt-4 text-sm text-red-600">{cap.detail}</p>}
-        <Fix cap={cap} />
-        <div className="mt-6 flex items-center gap-3">
+        <StepHeading eyebrow="Step 2 of 4" title="Connect the database" sub={clean(database.unlocks)} />
+        {database.detail && <p className="mt-4 text-sm text-red-600">{database.detail}</p>}
+        <Fix cap={database} />
+        <div className="mt-6">
           <Link href="/setup?step=model" className={PRIMARY}>Check again</Link>
-          {todo.length > 1 && <span className="text-[13px] text-muted-foreground">{todo.length - 1} more after this</span>}
         </div>
       </>
     );
@@ -61,19 +56,12 @@ function ModelStep({ required, ready }: { required: Capability[]; ready: boolean
 
   return (
     <>
-      <StepHeading eyebrow="Step 2 of 4" title="Your model is connected" sub="Lore found everything it needs to write" />
-      <div className="mt-7 rounded-lg border border-border bg-card divide-y divide-border">
-        {required.map((c) => (
-          <div key={c.id} className="flex items-center gap-3 px-4 py-3">
-            <Dot status={c.status} />
-            <span className="text-sm font-medium">{c.label}</span>
-            <span className="ml-auto truncate text-[13px] text-muted-foreground">{c.detail}</span>
-          </div>
-        ))}
-      </div>
-      <div className="mt-7">
-        <Link href="/setup?step=extras" className={PRIMARY}>Continue</Link>
-      </div>
+      <StepHeading
+        eyebrow="Step 2 of 4"
+        title="Connect a model"
+        sub="Lore writes with an AI you already pay for, so there is nothing extra to buy"
+      />
+      <ModelPicker />
     </>
   );
 }
@@ -187,7 +175,7 @@ export default async function SetupPage({
 
   return (
     <SetupShell current={showExtras ? 2 : 1}>
-      {showExtras ? <ExtrasStep optional={optional} item={item} /> : <ModelStep required={required} ready={ready} />}
+      {showExtras ? <ExtrasStep optional={optional} item={item} /> : <ModelStep required={required} />}
     </SetupShell>
   );
 }

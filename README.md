@@ -62,13 +62,15 @@ Only two things are required.
 
 | | Agent CLI | API key |
 |---|---|---|
-| Setup | install Claude Code or Codex, sign in once | paste a key in `.env.local` |
+| Setup | install Claude Code (Claude plan) or Codex (ChatGPT plan), sign in once | paste a key in `.env.local` |
 | Cost | included in your subscription | per token |
 | Images | no | yes |
 | Speed | slower, it spawns a process | faster |
 
-Lore prefers a key when one is set, because setting a key is a deliberate choice.
-`LORE_PROVIDER=cli` forces the CLI anyway.
+The setup page finds what is installed, lets you pick Claude or ChatGPT, and sends a
+test message so you know it answers before you start. Posts generated this way have no
+limits from Lore, only whatever your own plan allows. Set `LORE_PROVIDER` to `claude`,
+`codex` or `api` to pin a choice in `.env.local` instead.
 
 Everything else is optional and degrades quietly when it is absent: Telegram, X
 lookups, voice interviews, outgoing webhooks. The setup page lists what each one

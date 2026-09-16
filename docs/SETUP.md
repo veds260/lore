@@ -52,7 +52,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 # or OPENROUTER_API_KEY=sk-or-...
 ```
 
-A key takes priority over a CLI, because setting one is a deliberate choice. To force the CLI even when a key exists, set `LORE_PROVIDER=cli`.
+With both a CLI and a key available, pick one on the setup page, or pin it with `LORE_PROVIDER=claude`, `codex` or `api`. Without a choice, a key wins because setting one is deliberate.
 
 ### Which one should you pick
 

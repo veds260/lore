@@ -26,7 +26,7 @@ import {
 import { ensureVaultMirrored } from '@/lib/vault/sync';
 import { buildDraftSourceInputs, planPost } from '@/lib/agents/post-strategist';
 import { isAutoRotationEligible } from '@/lib/pattern-categories';
-import { modelAvailable } from '@/lib/providers';
+import { modelAvailable, modelErrorBody } from '@/lib/providers';
 
 // LENGTH_GUIDE, FullPattern, deriveMirrorSpec, buildTemplateInstructions, enforceTwitterBreaks, and
 // CONTENT_STYLE_DIRECTIVE now live in lib/post-prompt.ts (shared with the connector). buildPrompt too.
@@ -336,7 +336,8 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error('[generate] callAI failed', userId, err);
     if (chat) await refundCredits(userId, 'chat_message', { reason: 'callAI_error' });
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    const { status, body } = modelErrorBody(err);
+    return NextResponse.json(body, { status });
   }
 
   // ── parseJSON: refund on failure ──────────────────────────────────────────────
@@ -504,6 +505,7 @@ export async function POST(req: NextRequest) {
       ...(draftSourceInputs.length ? { sourceInputs: draftSourceInputs } : {}),
     });
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    const { status, body } = modelErrorBody(err);
+    return NextResponse.json(body, { status });
   }
 }

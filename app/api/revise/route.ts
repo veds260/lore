@@ -12,7 +12,7 @@ import { applyRulesFix } from '@/lib/rules-fixer';
 import { checkDailyLimit } from '@/lib/credits';
 import { decryptSkillBody } from '@/lib/skills-crypto';
 import { detectEditPreference } from '@/lib/learning/edit-preferences';
-import { modelAvailable } from '@/lib/providers';
+import { modelAvailable, modelErrorBody } from '@/lib/providers';
 
 // Detect the structural fingerprint of a post so the revise prompt can tell the
 // model to preserve it. Each detected beat becomes a hard preservation rule.
@@ -181,6 +181,7 @@ Return ONLY the revised post text. No explanation, no preamble, no surrounding t
     });
     return NextResponse.json({ revised, learningSuggestion });
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    const { status, body } = modelErrorBody(err);
+    return NextResponse.json(body, { status });
   }
 }

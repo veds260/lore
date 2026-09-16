@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { callAI, parseJSON, MODEL_EXTRACT } from '@/lib/ai';
-import { modelAvailable } from '@/lib/providers';
+import { modelAvailable, modelErrorBody } from '@/lib/providers';
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -57,6 +57,7 @@ Return only the JSON object. No markdown fences, no explanation.`;
     if (!parsed) return NextResponse.json({ error: 'Failed to parse model response' }, { status: 500 });
     return NextResponse.json(parsed);
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    const { status, body } = modelErrorBody(err);
+    return NextResponse.json(body, { status });
   }
 }
