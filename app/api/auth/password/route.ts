@@ -1,7 +1,7 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import type { NextRequest } from 'next/server';
 import {
   clearFailures, createSession, findPasswordUser, lockedOut, recordFailure,
-  sessionCookieName, sessionCookieOptions, verifyPassword,
+  seeOther, sessionCookieName, sessionCookieOptions, verifyPassword,
 } from '@/lib/auth/local';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   const ip = (req.headers.get('x-forwarded-for')?.split(',')[0] ?? 'local').trim();
   const limitKey = `${email}|${ip}`;
 
-  const fail = (error: string) => NextResponse.redirect(new URL(`/login?error=${error}`, req.nextUrl.origin), 303);
+  const fail = (error: string) => seeOther(`/login?error=${error}`);
 
   if (lockedOut(limitKey) || lockedOut(ip)) return fail('locked');
   if (!email || !password) return fail('password');
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   }
 
   clearFailures(limitKey);
-  const res = NextResponse.redirect(new URL('/board', req.nextUrl.origin), 303);
+  const res = seeOther('/board');
   res.cookies.set(sessionCookieName(), await createSession(user.id), sessionCookieOptions());
   return res;
 }

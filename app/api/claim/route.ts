@@ -1,6 +1,6 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import type { NextRequest } from 'next/server';
 import { claimInstance } from '@/lib/setup/claim';
-import { sessionCookieName, sessionCookieOptions } from '@/lib/auth/local';
+import { seeOther, sessionCookieName, sessionCookieOptions } from '@/lib/auth/local';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -18,13 +18,12 @@ export async function POST(req: NextRequest) {
   });
 
   if (!result.ok) {
-    const back = result.error === 'claimed'
-      ? new URL('/login?claimed=1', req.nextUrl.origin)
-      : new URL(`/claim?token=${encodeURIComponent(token)}&error=${result.error}`, req.nextUrl.origin);
-    return NextResponse.redirect(back, 303);
+    return seeOther(result.error === 'claimed'
+      ? '/login?claimed=1'
+      : `/claim?token=${encodeURIComponent(token)}&error=${result.error}`);
   }
 
-  const res = NextResponse.redirect(new URL('/setup', req.nextUrl.origin), 303);
+  const res = seeOther('/setup');
   res.cookies.set(sessionCookieName(), result.sessionToken, sessionCookieOptions());
   return res;
 }

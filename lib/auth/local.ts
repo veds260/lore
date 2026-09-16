@@ -1,4 +1,5 @@
 import { randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
+import { NextResponse } from 'next/server';
 import { promisify } from 'node:util';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
@@ -30,6 +31,14 @@ export function sessionCookieOptions() {
     path: '/',
     maxAge: SESSION_DAYS * 24 * 60 * 60,
   };
+}
+
+/**
+ * A 303 to a path on this same site. The Location stays relative because behind a
+ * proxy like Railway the request origin is the internal address, not the public one.
+ */
+export function seeOther(path: string): NextResponse {
+  return new NextResponse(null, { status: 303, headers: { Location: path } });
 }
 
 export async function hashPassword(password: string): Promise<string> {
