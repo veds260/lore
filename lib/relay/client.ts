@@ -19,7 +19,7 @@ export type RelayErrorCode =
   | 'unauthorized'
   | 'locked'
   | 'not_following'
-  | 'handle_taken'
+  | 'not_verified'
   | 'out_of_credits'
   | 'rate_limited'
   | 'daily_cap'
@@ -27,7 +27,7 @@ export type RelayErrorCode =
   | 'upstream';
 
 const CODES: readonly RelayErrorCode[] = [
-  'bad_request', 'unauthorized', 'locked', 'not_following', 'handle_taken', 'out_of_credits', 'rate_limited', 'daily_cap', 'disabled', 'upstream',
+  'bad_request', 'unauthorized', 'locked', 'not_following', 'not_verified', 'out_of_credits', 'rate_limited', 'daily_cap', 'disabled', 'upstream',
 ];
 
 export class RelayError extends Error {
@@ -165,12 +165,45 @@ export async function relayBalance(): Promise<RelayBalance | null> {
   };
 }
 
-/** Unlocks the starter credits with an X handle that follows the maintainer. Connects first if needed. */
-export async function unlockRelay(handle: string): Promise<{ credits: number; granted: number }> {
+export interface UnlockStatus {
+  credits: number;
+  granted: number;
+  unlocked: boolean;
+  x: string | null;
+  github: string | null;
+  githubRequired: boolean;
+  followHandle: string;
+}
+
+async function ensureConnected(): Promise<void> {
   if (!(await getRelayKey())) await connectRelay();
-  const res = await relayFetch('/unlock', { method: 'POST', body: JSON.stringify({ handle }), timeoutMs: 30_000 });
-  const data = (await res.json()) as { credits?: unknown; granted?: unknown };
-  return { credits: Number(data.credits ?? 0), granted: Number(data.granted ?? 0) };
+}
+
+async function relayJson<T>(path: string, init: RelayFetchInit = {}): Promise<T> {
+  await ensureConnected();
+  const res = await relayFetch(path, { timeoutMs: 30_000, ...init });
+  return (await res.json()) as T;
+}
+
+/** Where this install is in unlocking the free credits. Connects first if needed. */
+export function unlockStatus(): Promise<UnlockStatus> {
+  return relayJson<UnlockStatus>('/unlock/status', { method: 'GET' });
+}
+
+export function startXUnlock(handle: string): Promise<{ code: string; handle: string }> {
+  return relayJson('/unlock/start', { method: 'POST', body: JSON.stringify({ handle }) });
+}
+
+export function verifyXUnlock(): Promise<{ credits: number; granted: number; unlocked: boolean }> {
+  return relayJson('/unlock/verify', { method: 'POST', body: '{}' });
+}
+
+export function startGithubUnlock(): Promise<{ userCode: string; verificationUri: string; interval: number; expiresIn: number }> {
+  return relayJson('/unlock/github/start', { method: 'POST', body: '{}' });
+}
+
+export function pollGithubUnlock(): Promise<{ state: 'pending' | 'not_starred' | 'done'; login?: string; credits?: number; unlocked?: boolean }> {
+  return relayJson('/unlock/github/poll', { method: 'POST', body: '{}' });
 }
 
 export async function connectRelay(): Promise<{ credits: number }> {

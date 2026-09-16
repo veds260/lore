@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { runChecks, canRun, type Capability } from '@/lib/setup/checks';
 import { ownerExists } from '@/lib/setup/claim';
 import { auth } from '@/lib/auth';
-import { DEFAULT_FOLLOW_HANDLE, relayTurnedOff } from '@/lib/relay/client';
+import { relayTurnedOff } from '@/lib/relay/client';
 import { RelayUnlock } from '@/components/setup/relay-unlock';
 import { SetupShell, StepHeading } from '@/components/setup/setup-shell';
 
@@ -43,7 +43,7 @@ function Fix({ cap }: { cap: Capability }) {
 {cap.fix.join('\n')}
         </pre>
       )}
-      {cap.id === 'relay' && !relayTurnedOff() && <RelayUnlock followHandle={DEFAULT_FOLLOW_HANDLE} />}
+      {cap.id === 'relay' && !relayTurnedOff() && <RelayUnlock />}
     </>
   );
 }

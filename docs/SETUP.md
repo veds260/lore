@@ -147,7 +147,7 @@ If you have not set `TWITTERAPI_IO_KEY`, `FISH_AUDIO_API_KEY` or `GROQ_API_KEY`,
 npm run relay:connect   # connects this install to the relay
 ```
 
-The credits start locked. Follow [@vedsayys](https://x.com/vedsayys) on X, then open `/setup`, go to Extras, pick Shared relay and enter your X handle. Lore checks the follow and unlocks 200 credits, once per X account. The key is saved in your database, or you can set `LORE_RELAY_KEY` yourself.
+The credits start locked. Open `/setup`, go to Extras and pick Shared relay. Star the repo and confirm it by signing in to GitHub with the code shown, then follow [@vedsayys](https://x.com/vedsayys) on X and put the code it gives you in your bio or a post. You can remove the code once it says verified. Free credits need accounts that are at least 30 days old, and the X account needs 10 followers and 10 posts. Each account unlocks once, and reinstalling carries over what was left. The key is saved in your database, or you can set `LORE_RELAY_KEY` yourself.
 
 Your own keys always take priority. The relay sees X handles and search queries, the text being spoken, voice answers while they are transcribed, and your relay key, and never your drafts, database or prompts. To switch it off, put `LORE_RELAY=off` in `.env.local`.
 

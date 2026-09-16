@@ -164,13 +164,13 @@ async function checkRelay(): Promise<Capability> {
     id: 'relay',
     label: 'Shared relay',
     required: false,
-    unlocks: 'X lookups and voice interviews without your own API keys. Follow on X to unlock 200 free credits.',
+    unlocks: 'X lookups and voice interviews without your own API keys. Star on GitHub and follow on X to unlock 200 free credits.',
   };
   if (relayTurnedOff()) return { ...base, status: 'missing', detail: 'turned off with LORE_RELAY=off' };
 
   const key = await getRelayKey();
   if (!key) {
-    return { ...base, status: 'missing', fix: ['Follow the maintainer on X, then unlock the credits on the setup page, under Extras.'] };
+    return { ...base, status: 'missing', fix: ['Open the setup page, go to Extras, pick Shared relay and follow the two steps.'] };
   }
 
   try {
@@ -180,8 +180,8 @@ async function checkRelay(): Promise<Capability> {
       return {
         ...base,
         status: 'missing',
-        detail: `connected, credits locked until you follow @${balance.followHandle} on X`,
-        fix: [`Follow @${balance.followHandle} on X, then unlock the credits on the setup page, under Extras.`],
+        detail: 'connected, credits locked until you star on GitHub and follow on X',
+        fix: ['Open the setup page, go to Extras, pick Shared relay and follow the two steps.'],
       };
     }
     if (balance.credits <= 0) {

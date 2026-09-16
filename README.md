@@ -81,9 +81,11 @@ Groq. So you can try them first, the maintainer runs a small relay that makes th
 calls for each install on a limited number of free credits. Credits follow what a
 call really costs, so a long voice clip uses more than a profile lookup, and the keys
 themselves never leave the relay.
-The installer connects you automatically. The 200 starter credits unlock once you
-follow [@vedsayys](https://x.com/vedsayys) on X and enter your handle on the setup
-page, and each X account unlocks one install.
+The installer connects you automatically. The 200 starter credits unlock on the setup
+page once you star this repo and follow [@vedsayys](https://x.com/vedsayys) on X. GitHub
+sign-in confirms the star, and a short code in your X bio or a post confirms the X
+account is yours. Each account unlocks free credits once, so a reinstall carries over
+what was left rather than starting again.
 
 Your own key always wins. Set `TWITTERAPI_IO_KEY`, `FISH_AUDIO_API_KEY` or
 `GROQ_API_KEY` and that feature stops using the relay. The relay only ever sees X
