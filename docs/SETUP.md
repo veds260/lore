@@ -1,6 +1,6 @@
 # Setting up Lore
 
-Lore runs on your machine and uses an AI agent you already pay for. There is no Lore account, and your drafts, database and model calls stay local. If you skip your own X or Fish Audio keys, those calls can go through an optional shared relay instead, which is covered further down and easy to turn off.
+Lore runs on your machine and uses an AI agent you already pay for. There is no Lore account, and your drafts, database and model calls stay local. If you skip your own X, Fish Audio or Groq keys, those calls can go through an optional shared relay instead, which is covered further down and easy to turn off.
 
 If you get stuck at any point, run `npm run doctor`. It checks everything below and prints the exact command to fix whatever is missing.
 
@@ -20,7 +20,7 @@ echo 'DATABASE_URL=postgresql://postgres:lore@localhost:5432/postgres' >> .env.l
 npm run db:push
 
 npm run doctor   # should say "Lore is ready"
-npm run dev      # open http://localhost:3000
+npm run dev      # your browser opens on the setup page
 ```
 
 That is the whole required setup. Everything after this point is optional.
@@ -135,13 +135,13 @@ Use one or the other. Telegram will not deliver to a webhook and a poller at the
 
 Lore can interview you out loud instead of by typing, which tends to get better material out of you and faster.
 
-Voice interviews need a [Fish Audio](https://fish.audio) account. Set `FISH_AUDIO_API_KEY` in `.env.local`, or use the shared relay below.
+Voice interviews need [Fish Audio](https://fish.audio) for speech and [Groq](https://console.groq.com) for transcription. Set `FISH_AUDIO_API_KEY` and `GROQ_API_KEY` in `.env.local`, or use the shared relay below.
 
 ---
 
 ## The shared relay (optional)
 
-If you have not set `TWITTERAPI_IO_KEY` or `FISH_AUDIO_API_KEY`, Lore can borrow the maintainer's keys through a shared relay, on limited free credits. It also tops up your template library when you have fewer than 15 templates of a type.
+If you have not set `TWITTERAPI_IO_KEY`, `FISH_AUDIO_API_KEY` or `GROQ_API_KEY`, Lore can make those calls through a shared relay run by the maintainer, on limited free credits. A credit is about a tenth of a cent of real cost, so bigger calls use more. The keys stay on the relay.
 
 ```bash
 npm run relay:connect   # prints how many credits you got
@@ -149,7 +149,7 @@ npm run relay:connect   # prints how many credits you got
 
 The Connect button on `/setup` does the same thing. The key is saved in your database, or you can set `LORE_RELAY_KEY` yourself.
 
-Your own keys always take priority. The relay sees X handles and search queries, the text being spoken, and your relay key, and never your drafts, database or prompts. To switch it off, put `LORE_RELAY=off` in `.env.local`.
+Your own keys always take priority. The relay sees X handles and search queries, the text being spoken, voice answers while they are transcribed, and your relay key, and never your drafts, database or prompts. To switch it off, put `LORE_RELAY=off` in `.env.local`.
 
 ---
 

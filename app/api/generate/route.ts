@@ -6,7 +6,6 @@ import { eq, and, gte, desc, notInArray, sql } from 'drizzle-orm';
 import { getActiveBrandId } from '@/lib/active-brand';
 import type { PostLength } from '@/components/board/types';
 // Canonical post-generation engine, shared with the connector so both generate identically. Edit the prompt/template logic in lib/post-prompt.ts, never re-fork it here.
-import { ensurePatternLibrary } from '@/lib/patterns/relay-library';
 import { buildPrompt, type FullPattern, LENGTH_GUIDE, enforceTwitterBreaks, stripEmDashes } from '@/lib/post-prompt';
 import { callAI, parseJSON, MODEL_CREATIVE } from '@/lib/ai';
 import { applyRulesFix } from '@/lib/rules-fixer';
@@ -276,7 +275,6 @@ export async function POST(req: NextRequest) {
       .where(eq(brands.id, brand.id))
       .limit(1);
 
-    await ensurePatternLibrary();
     const candidates = await db
       .select({ id: postPatterns.id, contentCategory: postPatterns.contentCategory, postType: postPatterns.postType })
       .from(postPatterns)

@@ -1,12 +1,13 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, gt, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { sessions, users, verificationTokens } from '@/lib/db/schema';
+import { users, verificationTokens } from '@/lib/db/schema';
+import { MIN_PASSWORD, createSession, hashPassword, validEmail } from '@/lib/auth/local';
 
-// A fresh instance has no user and no way to sign in: a self-hoster has no Google
-// app and no verified mail domain. The server mints one single-use link at boot
-// and prints it to the terminal, so holding the terminal is the proof of
-// ownership. Same bar as being able to read .env.local.
+// A fresh instance has no user. The server mints one single-use link at boot,
+// prints it and opens it in the browser, so holding the machine is the proof of
+// ownership, the same bar as being able to read .env.local. Whoever opens it
+// creates the owner account with an email and password.
 //
 // The token lives in the database rather than in memory because the boot hook and
 // the route handler are separate module instances and would not share a variable.
@@ -14,7 +15,6 @@ import { sessions, users, verificationTokens } from '@/lib/db/schema';
 const IDENTIFIER = 'lore:claim';
 const TOKEN_BYTES = 32;
 const TOKEN_HOURS = 24;
-const SESSION_DAYS = 30;
 
 export async function isUnclaimed(): Promise<boolean> {
   try {
@@ -48,48 +48,59 @@ function sameToken(a: string, b: string): boolean {
   return timingSafeEqual(x, y);
 }
 
-export interface ClaimResult {
-  ok: boolean;
-  sessionToken?: string;
-  error?: string;
+export async function claimTokenValid(given: string): Promise<boolean> {
+  if (!given || !(await isUnclaimed())) return false;
+  try {
+    const [row] = await db
+      .select({ token: verificationTokens.token, expires: verificationTokens.expires })
+      .from(verificationTokens)
+      .where(eq(verificationTokens.identifier, IDENTIFIER))
+      .limit(1);
+    return Boolean(row && row.expires.getTime() > Date.now() && sameToken(given, row.token));
+  } catch {
+    return false;
+  }
 }
 
-export async function claimInstance(given: string, email?: string): Promise<ClaimResult> {
-  if (!given) return { ok: false, error: 'missing token' };
-  if (!(await isUnclaimed())) return { ok: false, error: 'already claimed' };
+export interface ClaimInput {
+  token: string;
+  name: string;
+  email: string;
+  password: string;
+}
 
-  const [row] = await db
-    .select({ token: verificationTokens.token, expires: verificationTokens.expires })
-    .from(verificationTokens)
-    .where(eq(verificationTokens.identifier, IDENTIFIER))
-    .limit(1);
+export type ClaimResult =
+  | { ok: true; sessionToken: string }
+  | { ok: false; error: 'invalid' | 'claimed' | 'email' | 'password' | 'failed' };
 
-  if (!row) return { ok: false, error: 'no link has been issued' };
-  if (row.expires.getTime() < Date.now()) return { ok: false, error: 'link expired' };
-  if (!sameToken(given, row.token)) return { ok: false, error: 'invalid token' };
+export async function claimInstance(input: ClaimInput): Promise<ClaimResult> {
+  const email = input.email.trim().toLowerCase();
+  if (!validEmail(email)) return { ok: false, error: 'email' };
+  if (input.password.length < MIN_PASSWORD || input.password.length > 200) return { ok: false, error: 'password' };
+  if (!(await isUnclaimed())) return { ok: false, error: 'claimed' };
+  if (!(await claimTokenValid(input.token))) return { ok: false, error: 'invalid' };
 
-  const ownerEmail = (email?.trim() || process.env.ADMIN_EMAIL?.trim() || 'owner@localhost').toLowerCase();
+  // Deleting the token is the claim. Only one request can delete it, so two tabs
+  // racing on the same link cannot both become the owner.
+  const consumed = await db
+    .delete(verificationTokens)
+    .where(and(
+      eq(verificationTokens.identifier, IDENTIFIER),
+      eq(verificationTokens.token, input.token),
+      gt(verificationTokens.expires, new Date()),
+    ))
+    .returning({ token: verificationTokens.token });
+  if (consumed.length === 0) return { ok: false, error: 'invalid' };
+  if (!(await isUnclaimed())) return { ok: false, error: 'claimed' };
 
+  const passwordHash = await hashPassword(input.password);
   const [user] = await db
     .insert(users)
-    .values({ email: ownerEmail, emailVerified: new Date() })
-    .onConflictDoUpdate({ target: users.email, set: { emailVerified: new Date() } })
+    .values({ email, name: input.name.trim().slice(0, 80) || null, emailVerified: new Date(), passwordHash })
     .returning({ id: users.id });
+  if (!user) return { ok: false, error: 'failed' };
 
-  if (!user) return { ok: false, error: 'could not create the owner account' };
-
-  const sessionToken = randomBytes(TOKEN_BYTES).toString('hex');
-  await db.insert(sessions).values({
-    sessionToken,
-    userId: user.id,
-    expires: new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000),
-  });
-
-  await db
-    .delete(verificationTokens)
-    .where(and(eq(verificationTokens.identifier, IDENTIFIER), eq(verificationTokens.token, row.token)));
-
-  return { ok: true, sessionToken };
+  return { ok: true, sessionToken: await createSession(user.id) };
 }
 
 export async function ownerExists(): Promise<boolean> {

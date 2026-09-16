@@ -3,32 +3,43 @@ import { auth, signIn } from '@/lib/auth';
 import { AuthError } from 'next-auth';
 
 const googleConfigured = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+const magicLinkConfigured = !!process.env.RESEND_API_KEY;
+
+const INPUT = 'w-full px-3 py-2 rounded-md border border-border bg-card text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-colors';
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; claimed?: string }>;
 }) {
   const session = await auth();
   if (session?.user) redirect('/board');
 
-  const { error } = await searchParams;
+  const { error, claimed } = await searchParams;
 
   return (
     <div className="w-full max-w-sm">
       <div className="mb-8 text-center">
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">Sign in to Lore</h1>
         <p className="text-sm text-muted-foreground mt-2">
-          Enter your email and we&apos;ll send you a magic link.
+          {magicLinkConfigured ? 'Use your password, or get a sign-in link by email.' : 'Use the email and password you set up.'}
         </p>
       </div>
+
+      {claimed && !error && (
+        <div className="mb-5 px-3 py-2.5 rounded-md border border-border bg-card text-xs text-muted-foreground leading-relaxed">
+          This Lore already has an owner, so sign in with that account.
+        </div>
+      )}
 
       {error && (
         <div className="mb-5 px-3 py-2.5 rounded-md border border-destructive/40 bg-destructive/5 text-xs text-destructive leading-relaxed">
           {error === 'db' && 'Database not connected. Set DATABASE_URL in .env.local and run the migration.'}
           {error === 'email' && 'Email could not be sent. Check that RESEND_API_KEY is set.'}
           {error === 'config' && 'Auth is not fully configured. See .env.example for required variables.'}
-          {!['db', 'email', 'config'].includes(error) && 'Something went wrong. Try again.'}
+          {error === 'password' && 'That email and password do not match.'}
+          {error === 'locked' && 'Too many tries. Wait 15 minutes, or reset it with npm run password:reset.'}
+          {!['db', 'email', 'config', 'password', 'locked'].includes(error) && 'Something went wrong. Try again.'}
         </div>
       )}
 
@@ -62,6 +73,31 @@ export default async function LoginPage({
         </>
       )}
 
+      <form action="/api/auth/password" method="post" className="space-y-4">
+        <div>
+          <label htmlFor="pw-email" className="block text-sm font-medium text-foreground mb-1.5">Email</label>
+          <input id="pw-email" name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={INPUT} />
+        </div>
+        <div>
+          <label htmlFor="pw-password" className="block text-sm font-medium text-foreground mb-1.5">Password</label>
+          <input id="pw-password" name="password" type="password" required autoComplete="current-password" className={INPUT} />
+        </div>
+        <button
+          type="submit"
+          className="w-full py-2 px-4 rounded-md bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity"
+        >
+          Sign in
+        </button>
+      </form>
+
+      {magicLinkConfigured && (
+      <>
+      <div className="flex items-center gap-3 my-5">
+        <div className="flex-1 h-px bg-border" />
+        <span className="text-xs text-muted-foreground">or email me a link</span>
+        <div className="flex-1 h-px bg-border" />
+      </div>
+
       <form
         action={async (formData: FormData) => {
           'use server';
@@ -94,31 +130,18 @@ export default async function LoginPage({
           <label htmlFor="email" className="block text-sm font-medium text-foreground mb-1.5">
             Email
           </label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            required
-            autoComplete="email"
-            placeholder="you@example.com"
-            className="w-full px-3 py-2 rounded-md border border-border bg-card text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-colors"
-          />
+          <input id="email" name="email" type="email" required autoComplete="email" placeholder="you@example.com" className={INPUT} />
         </div>
         <button
           type="submit"
-          className="w-full py-2 px-4 rounded-md bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity"
+          className="w-full py-2 px-4 rounded-md border border-border bg-card text-foreground text-sm font-medium hover:bg-accent transition-colors"
         >
-          Send magic link
+          Send sign-in link
         </button>
       </form>
 
-      <p className="mt-6 text-xs text-muted-foreground text-center">
-        No password needed. We&apos;ll email you a sign-in link.
-      </p>
-
-      <p className="mt-8 text-xs text-muted-foreground text-center">
-        New to Lore? Just enter your email above. We&apos;ll create your account on first sign-in.
-      </p>
+      </>
+      )}
     </div>
   );
 }

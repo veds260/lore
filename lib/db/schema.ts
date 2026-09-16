@@ -56,6 +56,8 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   emailVerified: timestamp('email_verified', { mode: 'date' }),
   image: text('image'),
+  // scrypt hash for email and password sign-in, null for magic link and Google users
+  passwordHash: text('password_hash'),
   // Lore custom columns
   planTier: planTierEnum('plan_tier').notNull().default('free'),
   interviewsPerMonth: integer('interviews_per_month').notNull().default(0),

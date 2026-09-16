@@ -113,7 +113,7 @@ export async function relayFetch(path: string, init: RelayFetchInit = {}): Promi
     if (!key) throw new RelayError('Not connected to the shared relay', 401, 'unauthorized');
     h.set('Authorization', `Bearer ${key}`);
   }
-  if (rest.body && !h.has('Content-Type')) h.set('Content-Type', 'application/json');
+  if (rest.body && !h.has('Content-Type') && !(rest.body instanceof FormData)) h.set('Content-Type', 'application/json');
 
   const suffix = path.startsWith('/') ? path : `/${path}`;
   const res = await fetch(`${relayBaseUrl()}/api/relay/v1${suffix}`, {
@@ -140,7 +140,6 @@ export function relayCreditsFrom(res: { headers: Headers }): number | null {
 export interface RelayBalance {
   credits: number;
   granted: number;
-  patternsLeftToday: number;
 }
 
 /** Null when the relay is off or there is no key. Throws when the call fails. */
@@ -151,7 +150,6 @@ export async function relayBalance(): Promise<RelayBalance | null> {
   return {
     credits: Number(data.credits ?? 0),
     granted: Number(data.granted ?? 0),
-    patternsLeftToday: Number(data.patternsLeftToday ?? 0),
   };
 }
 

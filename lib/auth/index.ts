@@ -46,9 +46,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     verifyRequest: '/login/verify',
   },
   callbacks: {
+    // With database sessions Auth.js hands over the whole user row and the session
+    // token. Only pass on what the app reads, so /api/auth/session never exposes
+    // password hashes, link tokens or the session token to page scripts.
     session({ session, user }) {
-      session.user.id = user.id;
-      return session;
+      return {
+        expires: session.expires,
+        user: { id: user.id, name: user.name ?? null, email: user.email, image: user.image ?? null },
+      } as typeof session;
     },
   },
 });

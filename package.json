@@ -16,7 +16,8 @@
     "test:pairing": "tsx tests/pairing.test.ts",
     "test": "tsx tests/pairing.test.ts",
     "setup": "tsx scripts/predev.ts && drizzle-kit push",
-    "mcp": "tsx mcp/server.mts"
+    "mcp": "tsx mcp/server.mts",
+    "password:reset": "tsx scripts/password-reset.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.0",

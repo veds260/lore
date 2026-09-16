@@ -8,7 +8,6 @@ import type { PostLength } from '@/components/board/types';
 import { GLOBAL_RULES_PROMPT, STRUCTURAL_RULES } from '@/lib/global-rules';
 import { buildCraftRules } from '@/lib/craft-rules';
 import { isAutoRotationEligible } from './pattern-categories';
-import { ensurePatternLibrary } from './patterns/relay-library';
 
 export const LENGTH_GUIDE: Record<PostLength, { twitter: string; linkedin: string }> = {
   short:  { twitter: 'One punchy idea. Keep it tight.',         linkedin: 'Short and impactful. Say one thing well.' },
@@ -341,7 +340,6 @@ export async function pickTemplate(opts: {
       .select({ allowUnhingedMode: brands.allowUnhingedMode })
       .from(brands).where(eq(brands.id, brandId)).limit(1);
 
-    await ensurePatternLibrary();
     const candidates = await db
       .select({ id: postPatterns.id, contentCategory: postPatterns.contentCategory, postType: postPatterns.postType })
       .from(postPatterns)

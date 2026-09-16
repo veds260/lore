@@ -10,10 +10,13 @@ release notes unless you would rather not be named.
 
 ## What Lore assumes
 
-**Whoever holds the terminal owns the instance.** First run prints a claim link on
-stdout. Anyone who can read that output can become the owner, which is the same
-trust level as being able to read `.env.local`. On a shared host, claim the instance
-immediately or set up a real sign-in method before exposing the port.
+**Whoever holds the terminal owns the instance.** First run prints a setup link on
+stdout and opens it in a local browser. Anyone who can read that output can create
+the owner account, which is the same trust level as being able to read `.env.local`.
+On a shared host, create the account before exposing the port.
+
+**Passwords are hashed with scrypt** and never stored or logged in plain text. Failed
+sign-ins are limited to ten per email and address in fifteen minutes.
 
 **`/setup` is public only while the instance is unowned.** After that it requires a
 session. A fresh deploy left running on a public URL with nobody claiming it is the
@@ -31,8 +34,9 @@ file.
 prefixed `NEXT_PUBLIC_` is shipped to the browser, so nothing sensitive goes there.
 
 **The shared relay sees a little, and only when you use it.** Installs without their
-own X or Fish Audio keys call a relay run by the maintainer. It receives the X
-handles and search queries being looked up, the text sent for speech, and the
+own X, Fish Audio or Groq keys call a relay run by the maintainer. It receives the X
+handles and search queries being looked up, the text sent for speech, voice answers
+sent for transcription, and the
 install's relay key, which is stored in the `instance_settings` table or in
 `LORE_RELAY_KEY`. It never receives drafts, the database or model prompts. Setting
 your own keys keeps those calls off the relay, and `LORE_RELAY=off` disables it.

@@ -3,6 +3,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { brands, scheduledPosts } from '@/lib/db/schema';
+import { getActiveBrandId } from '@/lib/active-brand';
 
 export async function GET() {
   const session = await auth();
@@ -26,6 +27,7 @@ export async function POST(req: NextRequest) {
   const content = (body?.content as string | undefined)?.trim();
   const scheduledFor = body?.scheduledFor ? new Date(body.scheduledFor) : null;
   const brandId = body?.brandId as string | undefined;
+  const platform = body?.platform === 'linkedin' ? 'linkedin' : 'twitter';
 
   if (!content || !scheduledFor || Number.isNaN(scheduledFor.getTime())) {
     return NextResponse.json({ error: 'content and scheduledFor are required' }, { status: 400 });
@@ -37,26 +39,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'content too long' }, { status: 400 });
   }
 
-  // Publishing goes through the brand's official X connection.
-  const brandWhere = brandId
-    ? and(eq(brands.id, brandId), eq(brands.userId, session.user.id))
-    : and(eq(brands.userId, session.user.id), eq(brands.isActive, true));
-  const [brand] = await db
-    .select({ id: brands.id, xAccessToken: brands.xAccessToken })
+  // Scheduling saves a reminder. Lore never posts on the user's behalf.
+  const targetBrandId = brandId ?? await getActiveBrandId(session.user.id);
+  const [brand] = targetBrandId ? await db
+    .select({ id: brands.id })
     .from(brands)
-    .where(brandWhere)
-    .orderBy(desc(brands.createdAt))
-    .limit(1);
+    .where(and(eq(brands.id, targetBrandId), eq(brands.userId, session.user.id)))
+    .limit(1) : [];
 
   if (!brand) return NextResponse.json({ error: 'No brand found' }, { status: 400 });
-  if (!brand.xAccessToken) {
-    return NextResponse.json({ error: 'Connect X in settings before scheduling posts' }, { status: 409 });
-  }
 
   const [row] = await db.insert(scheduledPosts).values({
     userId: session.user.id,
     brandId: brand.id,
-    platform: 'twitter',
+    platform,
     content,
     scheduledFor,
     status: 'pending',

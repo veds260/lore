@@ -7,6 +7,7 @@ import { COLUMNS, NEXT_STATUS } from './types';
 import { TwitterMockup, LinkedInMockup, type Profile, FALLBACK_PROFILE } from '@/components/ui/platform-mockups';
 import { LimitReachedModal } from '@/components/ui/limit-reached-modal';
 import { DrawerCoachmarks } from '@/components/tour/drawer-coachmarks';
+import { PostActions } from './post-actions';
 
 
 interface DraftDrawerProps {
@@ -306,22 +307,19 @@ export function DraftDrawer({ draft, onClose, onStatusChange, onContentChange, o
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          content: twitterContent || draft.content,
+          content: activeContent || draft.content,
+          platform: activePlatform,
           scheduledFor: new Date(scheduleAt).toISOString(),
         }),
       });
       const json = await res.json();
       if (!res.ok) {
-        setScheduleError(
-          res.status === 409
-            ? 'Connect X in settings first, then schedule from here.'
-            : (json.error ?? 'Could not schedule.'),
-        );
+        setScheduleError(json.error ?? 'Could not save the reminder.');
         return;
       }
       setScheduledOk(true);
     } catch {
-      setScheduleError('Could not schedule.');
+      setScheduleError('Could not save the reminder.');
     } finally {
       setScheduling(false);
     }
@@ -551,6 +549,8 @@ export function DraftDrawer({ draft, onClose, onStatusChange, onContentChange, o
                         ? <TwitterMockup text={activeContent} profile={profile} />
                         : <LinkedInMockup text={activeContent} profile={profile} />
                       }
+
+                      <PostActions text={activeContent} platform={activePlatform} />
 
                       {/* Inline editor, auto-saves on every keystroke (parent debounces persistence) */}
                       <div className="space-y-1.5">
@@ -925,16 +925,16 @@ export function DraftDrawer({ draft, onClose, onStatusChange, onContentChange, o
                 </div>
               </div>
 
-              {/* Schedule to X */}
+              {/* Posting reminder */}
               {draft.status !== 'posted' && (
                 <div className="pt-2 border-t border-border">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide block mb-2">Schedule to X</span>
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide block mb-2">Remind me to post this</span>
                   {scheduleError && (
                     <p className="text-[11px] text-destructive mb-2">{scheduleError}</p>
                   )}
                   {scheduledOk ? (
                     <p className="text-xs text-[#529E63] flex items-center gap-1.5">
-                      <Check size={12} /> Scheduled. Lore posts it automatically.
+                      <Check size={12} /> Reminder saved. If Telegram is linked, Lore sends you the post when it is time.
                     </p>
                   ) : (
                     <div className="flex items-center gap-1.5">
@@ -950,7 +950,7 @@ export function DraftDrawer({ draft, onClose, onStatusChange, onContentChange, o
                         className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 border border-border rounded-md text-muted-foreground hover:text-foreground hover:border-muted-foreground/50 transition-colors disabled:opacity-50"
                       >
                         {scheduling ? <Loader2 size={12} className="animate-spin" /> : <CalendarClock size={12} />}
-                        Schedule
+                        Remind me
                       </button>
                     </div>
                   )}

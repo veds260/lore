@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { interviewSessions } from '@/lib/db/schema';
 import type { GeneratedQuestion } from '@/lib/db/schema';
+import { activeRelayKey, relayFetch, RelayError } from '@/lib/relay/client';
 
 // Groq Whisper STT
 // Model: whisper-large-v3-turbo, $0.04/audio hour (≈ $0.00067/min)
@@ -21,8 +22,10 @@ const MAX_STT_CALLS_PER_SESSION = 30;
 const sttCallCounts = new Map<string, number>();
 
 export async function POST(req: NextRequest) {
+  // Your own key wins. Without one, the shared relay transcribes on limited credits.
   const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return NextResponse.json({ error: 'STT not configured' }, { status: 503 });
+  const relayKey = apiKey ? null : await activeRelayKey();
+  if (!apiKey && !relayKey) return NextResponse.json({ error: 'STT not configured' }, { status: 503 });
 
   // Session token must be in the X-Session-Token header
   const sessionToken = req.headers.get('x-session-token');
@@ -75,6 +78,8 @@ export async function POST(req: NextRequest) {
     }, { status: 413 });
   }
 
+  if (!apiKey) return relayStt(audioFile);
+
   const groqForm = new FormData();
   groqForm.append('file', audioFile, 'recording.webm');
   groqForm.append('model', STT_MODEL);
@@ -95,4 +100,24 @@ export async function POST(req: NextRequest) {
 
   const data = await res.json() as { text: string };
   return NextResponse.json({ transcript: data.text?.trim() ?? '' });
+}
+
+async function relayStt(audio: Blob) {
+  try {
+    const form = new FormData();
+    form.append('audio', audio, 'recording.webm');
+    const res = await relayFetch('/voice/stt', { method: 'POST', body: form, timeoutMs: 65_000 });
+    const data = (await res.json()) as { transcript?: string };
+    return NextResponse.json({ transcript: data.transcript?.trim() ?? '' });
+  } catch (err) {
+    if (err instanceof RelayError) {
+      if (err.code === 'out_of_credits') {
+        return NextResponse.json({ error: 'The shared relay is out of credits for this install' }, { status: 402 });
+      }
+      if (err.code === 'daily_cap') {
+        return NextResponse.json({ error: 'The shared relay hit its daily transcription limit, try again tomorrow' }, { status: 429 });
+      }
+    }
+    return NextResponse.json({ error: 'Transcription failed' }, { status: 502 });
+  }
 }

@@ -45,7 +45,7 @@ export async function GET() {
     displayName,
     avatarUrl,
     headline,
-    twitterHandle: brand?.handle ?? 'yourhandle',
+    twitterHandle: brand?.handle?.trim().replace(/^@/, '') || null,
     linkedinHandle: brand?.linkedinHandle ?? null,
     brandId: brand?.id ?? null,
     selectedCategories: brand?.selectedCategories ?? [],

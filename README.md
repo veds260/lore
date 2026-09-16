@@ -5,17 +5,18 @@ actually write, and turns every edit you make into a rule it will not break agai
 
 It runs on your machine, against an AI agent you already pay for, and there is no
 Lore account. Your drafts, your database and your model calls stay on your machine.
-When you have not set your own X or Fish Audio keys, those lookups and the template
-library go through a shared relay on limited free credits, and `LORE_RELAY=off`
-turns that off.
+When you have not set your own X, Fish Audio or Groq keys, those calls go through a
+shared relay on limited free credits, and `LORE_RELAY=off` turns that off. Lore never
+posts for you. Every draft has a Post on X button that opens X with the text filled in,
+and you press send.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/veds260/lore/main/install.sh | sh
 ```
 
 That clones the repo, installs it, starts a Postgres if it can, writes the env
-file, creates the tables and boots the app. The terminal prints a link. Open it,
-and you own the instance.
+file, creates the tables and boots the app. Your browser then opens on a setup page
+where you create your account and connect a model, one step at a time.
 
 Read `install.sh` first if you would rather not pipe a script into a shell. The
 long way round is the same thing by hand:
@@ -75,15 +76,18 @@ turns on.
 
 ## Shared relay
 
-X lookups and voice interviews normally need paid keys from twitterapi.io and Fish
-Audio. So you can try them first, the maintainer runs a small relay that lends those keys and a
-curated template library to each install, with a limited number of free credits.
+X lookups and voice interviews normally need keys from twitterapi.io, Fish Audio and
+Groq. So you can try them first, the maintainer runs a small relay that makes those
+calls for each install on a limited number of free credits. Credits follow what a
+call really costs, so a long voice clip uses more than a profile lookup, and the keys
+themselves never leave the relay.
 The installer connects you automatically, and `npm run relay:connect` does the same
 by hand.
 
-Your own key always wins. Set `TWITTERAPI_IO_KEY` or `FISH_AUDIO_API_KEY` and that
-feature stops using the relay. The relay only ever sees X handles and search
-queries, the text being spoken, and your install's relay key. It never sees drafts,
+Your own key always wins. Set `TWITTERAPI_IO_KEY`, `FISH_AUDIO_API_KEY` or
+`GROQ_API_KEY` and that feature stops using the relay. The relay only ever sees X
+handles and search queries, the text being spoken, your voice answers while they are
+transcribed, and your install's relay key. It never sees drafts,
 your database or model prompts. Set `LORE_RELAY=off` to switch it off completely.
 
 ## Drive it from Claude
@@ -112,17 +116,18 @@ has the detail.
 
 ## Sign-in
 
-First run prints a one-time link that makes you the owner. That is enough for a
-single-user instance, and the link stops working the moment it is used.
+First run opens a one-time link where you create the owner account with an email and
+password. The link stops working the moment it is used, and after that you sign in at
+`/login`. Forgot the password? `npm run password:reset` sets a new one.
 
-For anything beyond that, set up either a magic link (`RESEND_API_KEY` plus
-`LORE_MAIL_FROM` on a domain you have verified) or Google OAuth
-(`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`). Neither is required to use Lore.
+If you want email links or Google sign-in too, set `RESEND_API_KEY` plus `LORE_MAIL_FROM`
+on a domain you have verified, or `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
 
 ## Running it on a server
 
 Set `NEXT_PUBLIC_APP_URL` to the real origin, put a strong `AUTH_SECRET` in place,
-and use a real sign-in method rather than the claim link. Set `CRON_SECRET` if you
+and create the owner account straight after the first deploy, since the setup link is
+printed to the server log rather than opened in a browser. Set `CRON_SECRET` if you
 want the scheduled jobs, and `AGENT_ENABLED=true` only when you actually want the
 background agent spending model calls.
 
@@ -150,6 +155,7 @@ npm run db:studio       # browse the data
 npm run worker          # the background agent, off unless AGENT_ENABLED=true
 npm run telegram:pair   # link a Telegram chat to a brand
 npm run relay:connect   # free starter credits on the shared relay
+npm run password:reset  # set a new password for an account
 npm run mcp             # the MCP server, for Claude and other MCP clients
 npm test                # unit tests
 ```

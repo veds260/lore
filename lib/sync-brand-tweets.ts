@@ -82,14 +82,18 @@ export async function syncBrandTweets(brandId: string, handle: string): Promise<
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (info.avatarUrl) updates.avatarUrl = info.avatarUrl;
 
-    await db.update(brands).set(updates).where(eq(brands.id, brandId));
+    try {
+      await db.update(brands).set(updates).where(eq(brands.id, brandId));
 
-    if (info.followerCount != null) {
-      await db.insert(followerSnapshots).values({
-        brandId,
-        platform: 'twitter',
-        followerCount: info.followerCount,
-      });
+      if (info.followerCount != null) {
+        await db.insert(followerSnapshots).values({
+          brandId,
+          platform: 'twitter',
+          followerCount: info.followerCount,
+        });
+      }
+    } catch (err) {
+      console.error(`[syncBrandTweets] profile update failed:`, err instanceof Error ? err.message : err);
     }
   }
 

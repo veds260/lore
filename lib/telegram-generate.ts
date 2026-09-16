@@ -7,7 +7,6 @@ import { buildCraftRules, looksLikeNewsReaction } from './craft-rules';
 import { applyRulesFix } from './rules-fixer';
 import { loadVoiceContext, formatVoiceSection } from './voice-context';
 import { isAutoRotationEligible } from './pattern-categories';
-import { ensurePatternLibrary } from './patterns/relay-library';
 
 // Pick a LinkedIn (long-post) template for this brand, rotated to avoid recent
 // repeats, satirical excluded unless brand opted in. Returns null if no eligible
@@ -25,7 +24,6 @@ async function pickLinkedinTemplate(brandId: string): Promise<{ name: string; te
     .where(and(eq(templateUsage.brandId, brandId), gte(templateUsage.createdAt, since)));
   const usedIds = recentlyUsed.map(r => r.templateId);
 
-  await ensurePatternLibrary();
   const candidates = await db
     .select({
       id: postPatterns.id,

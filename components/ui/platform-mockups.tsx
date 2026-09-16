@@ -6,7 +6,7 @@ export interface Profile {
   displayName: string;
   avatarUrl: string | null;
   headline: string;
-  twitterHandle: string;
+  twitterHandle: string | null;
   linkedinHandle: string | null;
 }
 
@@ -14,19 +14,22 @@ export const FALLBACK_PROFILE: Profile = {
   displayName: 'Your Name',
   avatarUrl: null,
   headline: 'Your headline here',
-  twitterHandle: 'yourhandle',
+  twitterHandle: null,
   linkedinHandle: null,
 };
 
 export function Avatar({ url, name, size, bg }: { url: string | null; name: string; size: number; bg: string }) {
-  const initial = name.charAt(0).toUpperCase();
-  if (url) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const initial = name.trim().charAt(0).toUpperCase() || '?';
+  if (url && url !== failedUrl) {
     return (
       <img
         src={url}
         alt={name}
         width={size}
         height={size}
+        referrerPolicy="no-referrer"
+        onError={() => setFailedUrl(url)}
         className="rounded-full object-cover shrink-0 select-none"
         style={{ width: size, height: size }}
       />
@@ -65,17 +68,18 @@ function TweetAction({ icon, count, hoverColor }: { icon: React.ReactNode; count
 }
 
 export function TwitterMockup({ text, profile }: { text: string; profile: Profile }) {
+  const handle = profile.twitterHandle?.trim().replace(/^@/, '');
   return (
     <div className="rounded-xl overflow-hidden bg-black border border-[#2f3336]">
       <div className="px-3 py-2.5">
         <div className="flex gap-2.5">
           <div className="flex-shrink-0 pt-0.5">
-            <Avatar url={profile.avatarUrl} name={profile.displayName} size={40} bg="bg-[#1D9BF0]" />
+            <Avatar url={profile.avatarUrl} name={profile.displayName} size={40} bg="bg-[#536471]" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1 text-[15px] leading-5">
               <span className="truncate font-bold text-[#e7e9ea]">{profile.displayName}</span>
-              <span className="flex-shrink-0 text-[#71767b]">@{profile.twitterHandle}</span>
+              {handle && <span className="flex-shrink-0 text-[#71767b]">@{handle}</span>}
               <span className="flex-shrink-0 text-[#71767b]">&middot;</span>
               <span className="flex-shrink-0 text-[#71767b]">now</span>
             </div>
@@ -136,7 +140,7 @@ export function LinkedInMockup({ text, profile }: { text: string; profile: Profi
       <div className="px-4 py-3">
         <div className="mb-3 flex items-start gap-3">
           <div className="flex-shrink-0 pt-0.5">
-            <Avatar url={profile.avatarUrl} name={profile.displayName} size={48} bg="bg-[#0A66C2]" />
+            <Avatar url={profile.avatarUrl} name={profile.displayName} size={48} bg="bg-[#56687a]" />
           </div>
           <div className="min-w-0 flex-1">
             <span className="text-[15px] font-semibold text-[#e7e9ea]">{profile.displayName}</span>

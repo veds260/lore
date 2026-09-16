@@ -134,19 +134,27 @@ async function relayConnected(): Promise<boolean> {
 }
 
 async function checkVoice(): Promise<Capability> {
-  const own = env('FISH_AUDIO_API_KEY');
-  const relay = own ? false : await relayConnected();
+  // Interviews need both directions: speech out (Fish Audio) and speech in (Groq).
+  const ownTts = Boolean(env('FISH_AUDIO_API_KEY'));
+  const ownStt = Boolean(env('GROQ_API_KEY'));
+  const relay = ownTts && ownStt ? false : await relayConnected();
+  const ready = (ownTts || relay) && (ownStt || relay);
+  const detail = ownTts && ownStt
+    ? 'using your own Fish Audio and Groq keys, no limits'
+    : relay
+      ? 'through the shared relay, limited credits'
+      : undefined;
   return {
     id: 'voice',
     label: 'Voice interviews',
     required: false,
     unlocks: 'Lore interviews you out loud instead of by typing, which gets better material faster.',
-    status: own || relay ? 'ok' : 'missing',
-    detail: own ? 'using your own Fish Audio key, no limits' : relay ? 'through the shared relay, limited credits' : undefined,
-    fix: own || relay ? undefined : [
+    status: ready ? 'ok' : 'missing',
+    detail,
+    fix: ready ? undefined : [
       'Either works:',
       '  A. Free starter credits on the shared relay: run `npm run relay:connect`, or use the Connect button on this page.',
-      '  B. Unlimited: make a Fish Audio account, then set FISH_AUDIO_API_KEY in .env.local',
+      '  B. Your own keys: FISH_AUDIO_API_KEY (fish.audio) and GROQ_API_KEY (console.groq.com, free tier) in .env.local',
     ],
   };
 }
@@ -156,7 +164,7 @@ async function checkRelay(): Promise<Capability> {
     id: 'relay',
     label: 'Shared relay',
     required: false,
-    unlocks: 'X lookups, voice interviews and the template library without your own API keys, on limited free credits.',
+    unlocks: 'X lookups and voice interviews without your own API keys, on limited free credits.',
   };
   if (relayTurnedOff()) return { ...base, status: 'missing', detail: 'turned off with LORE_RELAY=off' };
 
@@ -172,11 +180,12 @@ async function checkRelay(): Promise<Capability> {
       return {
         ...base,
         status: 'broken',
-        detail: `free credits used up (${balance.granted} granted), ${balance.patternsLeftToday} templates left today`,
+        detail: `free credits used up (${balance.granted} granted)`,
         fix: [
           'X lookups and voice now need your own keys:',
           '  TWITTERAPI_IO_KEY from twitterapi.io/dashboard',
           '  FISH_AUDIO_API_KEY from fish.audio',
+          '  GROQ_API_KEY from console.groq.com (free tier)',
           'Put them in .env.local and restart. Your own keys always take priority over the relay.',
         ],
       };
@@ -184,7 +193,7 @@ async function checkRelay(): Promise<Capability> {
     return {
       ...base,
       status: 'ok',
-      detail: `${balance.credits} credits left, ${balance.patternsLeftToday} templates left today`,
+      detail: `${balance.credits} of ${balance.granted} free credits left`,
     };
   } catch (err) {
     return {

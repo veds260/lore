@@ -133,7 +133,7 @@ async function handleNewHandle(chatId: string, text: string, data: Record<string
   const info = await fetchUserInfo(handle).catch(() => null);
   const [created] = await db
     .insert(brands)
-    .values({ userId, name: info?.name || handle, handle })
+    .values({ userId, name: info?.name || handle, handle, avatarUrl: info?.avatarUrl ?? null })
     .returning({ id: brands.id, name: brands.name, handle: brands.handle });
 
   await bindAndIngest(chatId, userId, { id: created.id, name: created.name, handle: created.handle, hasVoice: false }, info?.followerCount ?? null, data);

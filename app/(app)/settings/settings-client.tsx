@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { signOut } from 'next-auth/react';
 import Link from 'next/link';
-import { Plus, Check, Loader2, X, Send, ExternalLink, Mic } from 'lucide-react';
+import { Plus, Check, Loader2, Send, ExternalLink, Mic } from 'lucide-react';
 import { ModKey } from '@/components/ui/mod-key';
 
 interface User {
@@ -466,79 +466,6 @@ function CorrectionsSection() {
   );
 }
 
-function XConnectionSection() {
-  const [status, setStatus] = useState<{ connected: boolean; username: string | null } | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    fetch('/api/auth/x/status')
-      .then(r => r.json())
-      .then(setStatus)
-      .catch(() => setStatus({ connected: false, username: null }));
-  }, []);
-
-  async function disconnect() {
-    if (busy) return;
-    setBusy(true);
-    try {
-      await fetch('/api/auth/x/status', { method: 'DELETE' });
-      setStatus({ connected: false, username: null });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!status) {
-    return (
-      <Section title="X account">
-        <div className="h-8 w-32 rounded bg-muted animate-pulse" />
-      </Section>
-    );
-  }
-
-  return (
-    <Section title="X account">
-      <div className="border border-border rounded-lg bg-card p-4">
-        <div className="flex items-start gap-3 mb-3">
-          <div className="w-9 h-9 rounded-lg bg-foreground/8 border border-border flex items-center justify-center shrink-0">
-            <X size={15} className="text-foreground/70" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-foreground">Publish scheduled posts to X</p>
-            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-              Used only to publish posts you schedule from the board. Analytics keep flowing through the existing pipeline, nothing else touches this connection.
-            </p>
-          </div>
-        </div>
-
-        {status.connected ? (
-          <div className="flex items-center gap-3 pt-2 border-t border-border">
-            <div className="flex items-center gap-2 text-xs text-foreground">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <span>Connected{status.username ? ` as @${status.username}` : ''}</span>
-            </div>
-            <button
-              onClick={disconnect}
-              disabled={busy}
-              className="ml-auto text-xs text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
-            >
-              Disconnect
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => { window.location.href = '/api/auth/x/connect'; }}
-            className="w-full flex items-center justify-center gap-1.5 text-xs px-3 py-2 bg-foreground text-background rounded-md font-medium hover:opacity-90 transition-opacity"
-          >
-            <ExternalLink size={11} />
-            Connect X
-          </button>
-        )}
-      </div>
-    </Section>
-  );
-}
-
 function TelegramSection() {
   const [status, setStatus] = useState<{ linked: boolean; linkedAt: string | null; botUsername: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -950,9 +877,6 @@ export function SettingsClient({ user }: { user: User }) {
 
       {/* Telegram */}
       <TelegramSection />
-
-      {/* X publishing connection */}
-      <XConnectionSection />
 
       {/* Credits */}
       <CreditsSection credits={credits} loading={creditsLoading} />

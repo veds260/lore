@@ -101,7 +101,7 @@ if [ "$DB_READY" != yes ]; then
 fi
 
 say "Done. Starting Lore."
-step "A link will print below. Open it once and the instance is yours."
+step "Your browser opens to create your account. If it does not, use the link printed below."
 printf '\n'
 
 exec npm run dev
