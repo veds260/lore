@@ -35,6 +35,6 @@ jobs:
         env:
           # Enough to satisfy module-level reads. No real service is contacted.
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
-          AUTH_SECRET: build-only-not-a-real-secret
+          AUTH_SECRET: build-only-placeholder-not-a-real-secret-0000
           NEXT_PUBLIC_APP_URL: http://localhost:3000
           LORE_SKIP_CLAIM_BANNER: 'true'
