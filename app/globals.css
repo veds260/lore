@@ -145,3 +145,13 @@
     background-color: var(--sidebar);
   }
 }
+
+@keyframes lore-fill {
+  from { width: 0; }
+  to { width: 100%; }
+}
+.lore-fill {
+  animation-name: lore-fill;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}

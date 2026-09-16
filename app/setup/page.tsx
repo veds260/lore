@@ -4,7 +4,7 @@ import { ownerExists } from '@/lib/setup/claim';
 import { auth } from '@/lib/auth';
 import { relayTurnedOff } from '@/lib/relay/client';
 import { RelayConnectButton } from '@/components/setup/relay-connect-button';
-import { SetupSteps } from '@/components/setup/setup-steps';
+import { SetupShell, StepHeading } from '@/components/setup/setup-shell';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,61 +18,153 @@ async function gate(): Promise<'open' | 'denied'> {
   return session?.user ? 'open' : 'denied';
 }
 
-const DOT: Record<Capability['status'], string> = {
-  ok: 'bg-emerald-500',
-  missing: 'bg-stone-300',
-  broken: 'bg-red-500',
-  unknown: 'bg-amber-400',
-};
+const clean = (t: string) => t.replace(/\.$/, '');
+
+const PRIMARY = 'inline-flex items-center justify-center rounded-md bg-foreground px-5 py-2.5 text-sm font-medium text-background hover:opacity-90';
+const SECONDARY = 'inline-flex items-center justify-center rounded-md border border-border bg-card px-4 py-2.5 text-sm text-foreground hover:bg-accent';
+
+function Dot({ status }: { status: Capability['status'] }) {
+  const tone = status === 'ok' ? 'bg-emerald-500' : status === 'broken' ? 'bg-red-500' : status === 'unknown' ? 'bg-amber-400' : 'bg-stone-300';
+  return <span className={`size-2 shrink-0 rounded-full ${tone}`} />;
+}
 
 const WORD: Record<Capability['status'], string> = {
-  ok: 'ready',
-  missing: 'not set up',
-  broken: 'not working',
-  unknown: 'could not check',
+  ok: 'On',
+  missing: 'Off',
+  broken: 'Not working',
+  unknown: 'Could not check',
 };
 
-function Row({ cap }: { cap: Capability }) {
+function Fix({ cap }: { cap: Capability }) {
   return (
-    <div className="border-b border-border last:border-b-0 py-5">
-      <div className="flex items-baseline gap-3">
-        <span className={`size-2 rounded-full shrink-0 translate-y-[-1px] ${DOT[cap.status]}`} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline justify-between gap-4">
-            <h3 className="font-medium">
-              {cap.label}
-              {!cap.required && <span className="ml-2 text-xs text-muted-foreground">optional</span>}
-            </h3>
-            <span className="text-xs text-muted-foreground shrink-0">{WORD[cap.status]}</span>
-          </div>
-
-          {cap.detail && <p className="mt-1 text-sm text-muted-foreground">{cap.detail}</p>}
-
-          {cap.status !== 'ok' && (
-            <>
-              <p className="mt-1 text-sm text-muted-foreground">{cap.unlocks}</p>
-              {cap.fix && (
-                <pre className="mt-3 overflow-x-auto rounded-md border border-border bg-card p-3 text-[12px] leading-relaxed text-foreground/80 whitespace-pre-wrap">
+    <>
+      {cap.fix && (
+        <pre className="mt-4 max-h-[240px] overflow-auto rounded-md border border-border bg-card p-3.5 text-[12px] leading-relaxed text-foreground/85 whitespace-pre-wrap">
 {cap.fix.join('\n')}
-                </pre>
-              )}
-              {cap.id === 'relay' && !relayTurnedOff() && <RelayConnectButton />}
-            </>
-          )}
-        </div>
-      </div>
-    </div>
+        </pre>
+      )}
+      {cap.id === 'relay' && !relayTurnedOff() && <RelayConnectButton />}
+    </>
   );
 }
 
-export default async function SetupPage() {
+function ModelStep({ required, ready }: { required: Capability[]; ready: boolean }) {
+  const todo = required.filter((c) => c.status !== 'ok');
+
+  if (!ready) {
+    const cap = todo[0];
+    return (
+      <>
+        <StepHeading
+          eyebrow="Step 2 of 4"
+          title={cap.id === 'database' ? 'Connect the database' : 'Connect a model'}
+          sub={clean(cap.unlocks)}
+        />
+        {cap.detail && <p className="mt-4 text-sm text-red-600">{cap.detail}</p>}
+        <Fix cap={cap} />
+        <div className="mt-6 flex items-center gap-3">
+          <Link href="/setup?step=model" className={PRIMARY}>Check again</Link>
+          {todo.length > 1 && <span className="text-[13px] text-muted-foreground">{todo.length - 1} more after this</span>}
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <StepHeading eyebrow="Step 2 of 4" title="Your model is connected" sub="Lore found everything it needs to write" />
+      <div className="mt-7 rounded-lg border border-border bg-card divide-y divide-border">
+        {required.map((c) => (
+          <div key={c.id} className="flex items-center gap-3 px-4 py-3">
+            <Dot status={c.status} />
+            <span className="text-sm font-medium">{c.label}</span>
+            <span className="ml-auto truncate text-[13px] text-muted-foreground">{c.detail}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-7">
+        <Link href="/setup?step=extras" className={PRIMARY}>Continue</Link>
+      </div>
+    </>
+  );
+}
+
+function ExtrasStep({ optional, item }: { optional: Capability[]; item?: string }) {
+  const open = optional.find((c) => c.id === item);
+
+  if (open) {
+    return (
+      <>
+        <Link href="/setup?step=extras" className="text-[13px] text-muted-foreground hover:text-foreground">
+          ← All extras
+        </Link>
+        <div className="mt-5 flex items-center gap-2.5">
+          <Dot status={open.status} />
+          <span className="text-[12px] text-muted-foreground">{WORD[open.status]}</span>
+        </div>
+        <h1 className="mt-2 text-[28px] leading-tight font-semibold tracking-tight">{open.label}</h1>
+        <p className="mt-2.5 text-[15px] leading-relaxed text-muted-foreground">{clean(open.unlocks)}</p>
+        {open.status === 'ok' ? (
+          <p className="mt-5 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3.5 py-3 text-sm">
+            Working, {open.detail}
+          </p>
+        ) : (
+          <>
+            {open.detail && <p className="mt-4 text-sm text-muted-foreground">{open.detail}</p>}
+            <Fix cap={open} />
+            <div className="mt-6">
+              <Link href={`/setup?step=extras&item=${open.id}`} className={SECONDARY}>Check again</Link>
+            </div>
+          </>
+        )}
+      </>
+    );
+  }
+
+  const on = optional.filter((c) => c.status === 'ok').length;
+  return (
+    <>
+      <StepHeading
+        eyebrow="Step 3 of 4"
+        title="Turn on extras"
+        sub={`${on} of ${optional.length} are on. Skip any of them, this page is here whenever you want to add one`}
+      />
+      <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        {optional.map((c) => (
+          <Link
+            key={c.id}
+            href={`/setup?step=extras&item=${c.id}`}
+            className="group rounded-lg border border-border bg-card px-4 py-3.5 hover:border-foreground/30 transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              <Dot status={c.status} />
+              <span className="text-sm font-medium">{c.label}</span>
+              <span className="ml-auto text-[11px] text-muted-foreground">{WORD[c.status]}</span>
+            </span>
+            <span className="mt-1.5 block text-[12.5px] leading-snug text-muted-foreground line-clamp-2">{clean(c.unlocks)}</span>
+          </Link>
+        ))}
+      </div>
+      <div className="mt-7 flex items-center gap-4">
+        <Link href="/onboarding" className={PRIMARY}>Continue to your profile</Link>
+        <Link href="/setup?step=model" className="text-[13px] text-muted-foreground hover:text-foreground">Back</Link>
+      </div>
+    </>
+  );
+}
+
+export default async function SetupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ step?: string; item?: string }>;
+}) {
   if ((await gate()) === 'denied') {
     return (
       <main className="min-h-screen grid place-items-center px-6">
         <div className="max-w-sm text-center">
           <h1 className="text-lg font-semibold">Setup is closed</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            This instance already has an owner. Sign in to see its configuration.
+            This instance already has an owner, so sign in to see its configuration
           </p>
           <Link href="/login" className="mt-6 inline-block rounded-md bg-foreground px-4 py-2 text-sm text-background">
             Sign in
@@ -82,62 +174,16 @@ export default async function SetupPage() {
     );
   }
 
+  const { step, item } = await searchParams;
   const caps = await runChecks();
   const ready = canRun(caps);
   const required = caps.filter((c) => c.required);
-  const todo = required.filter((c) => c.status !== 'ok');
   const optional = caps.filter((c) => !c.required);
-  const live = optional.filter((c) => c.status === 'ok').length;
-  const owned = await ownerExists();
+  const showExtras = ready && step === 'extras';
 
   return (
-    <main className="min-h-screen bg-background">
-      <div className="mx-auto max-w-2xl px-6 py-16">
-        <SetupSteps current={!owned ? 0 : ready ? 2 : 1} />
-
-        <h1 className="mt-10 text-2xl font-semibold tracking-tight">
-          {ready ? 'Lore is ready' : todo.length === 1 ? 'One thing left before you can write' : `${todo.length} things left before you can write`}
-        </h1>
-        <p className="mt-3 text-muted-foreground leading-relaxed">
-          {ready
-            ? `Everything required works${live > 0 ? `, and ${live} extra ${live === 1 ? 'feature is' : 'features are'} on` : ''}. Next it reads your X handle and learns how you write.`
-            : 'Fix the red item below, then reload this page and it checks again.'}
-        </p>
-
-        {ready && (
-          <Link
-            href="/onboarding"
-            className="mt-7 inline-block rounded-md bg-foreground px-5 py-2.5 text-sm font-medium text-background hover:opacity-90"
-          >
-            Continue to your profile
-          </Link>
-        )}
-
-        {!ready && (
-          <section className="mt-10">
-            {todo.map((c) => <Row key={c.id} cap={c} />)}
-          </section>
-        )}
-
-        <details className="mt-10 group" open={!ready ? undefined : true}>
-          <summary className="cursor-pointer list-none text-xs font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground">
-            Extras, turn on what you want ({live} of {optional.length} on)
-          </summary>
-          <div className="mt-2">
-            {optional.map((c) => <Row key={c.id} cap={c} />)}
-          </div>
-        </details>
-
-        {ready && required.length > 0 && (
-          <p className="mt-10 text-sm text-muted-foreground">
-            Required and working: {required.map((c) => c.label.toLowerCase()).join(', ')}.
-          </p>
-        )}
-
-        <p className="mt-4 text-sm text-muted-foreground">
-          The same checks run in your terminal with <code className="font-mono text-[12px]">npm run doctor</code>.
-        </p>
-      </div>
-    </main>
+    <SetupShell current={showExtras ? 2 : 1}>
+      {showExtras ? <ExtrasStep optional={optional} item={item} /> : <ModelStep required={required} ready={ready} />}
+    </SetupShell>
   );
 }
