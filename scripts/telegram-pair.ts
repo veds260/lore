@@ -4,6 +4,7 @@
  * Works headless, so a Lore on a server can be paired without opening the app.
  * Prints a code, then waits until the bot sees it.
  */
+import '../lib/load-env';
 import { getOwner, issuePairingCode, unpair } from '../lib/telegram/pairing';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;

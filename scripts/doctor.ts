@@ -5,6 +5,7 @@
  * Reads the same capability registry as the in-app /setup screen, so the two
  * can never disagree.
  */
+import '../lib/load-env';
 import { runChecks, canRun, type Capability } from '../lib/setup/checks';
 
 const MARK: Record<Capability['status'], string> = {

@@ -6,11 +6,7 @@
  * safe: an install that already has a key just prints its balance.
  * Set LORE_RELAY=off to opt out entirely.
  */
-try {
-  process.loadEnvFile('.env.local');
-} catch {
-  // No .env.local yet, the environment may already carry what we need.
-}
+import '../lib/load-env';
 
 async function main() {
   const { connectRelay, relayTurnedOff } = await import('../lib/relay/client');
