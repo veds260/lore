@@ -1,0 +1,30 @@
+# Postgres for Lore. Everything else runs with npm.
+#
+#   docker compose up -d
+#   npm run db:push
+#   npm run dev
+#
+# The password is a local default and the port is bound to loopback, so this is
+# not reachable from your network. Change both before pointing anything real at it.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: lore-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: lore
+      POSTGRES_DB: lore
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - lore-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d lore"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  lore-db-data:

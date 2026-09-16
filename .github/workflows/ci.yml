@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Types
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+        env:
+          # Enough to satisfy module-level reads. No real service is contacted.
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          AUTH_SECRET: build-only-not-a-real-secret
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          LORE_SKIP_CLAIM_BANNER: 'true'

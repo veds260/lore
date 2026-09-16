@@ -1,0 +1,149 @@
+# Lore
+
+Lore reads the last 90 days of your posts before it writes anything, learns how you
+actually write, and turns every edit you make into a rule it will not break again.
+
+It runs on your machine, against an AI agent you already pay for. There is no Lore
+account, no key of ours, and nothing phones home.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/veds260/lore/main/install.sh | sh
+```
+
+That clones the repo, installs it, starts a Postgres if it can, writes the env
+file, creates the tables and boots the app. The terminal prints a link. Open it,
+and you own the instance.
+
+Read `install.sh` first if you would rather not pipe a script into a shell. The
+long way round is the same thing by hand:
+
+```bash
+git clone https://github.com/veds260/lore.git && cd lore
+npm install
+docker compose up -d
+npm run setup
+npm run dev
+```
+
+If anything is missing, `npm run doctor` says what and gives you the exact command.
+
+---
+
+## What it does
+
+**It starts from your real writing.** Connect a handle and Lore pulls your posts and
+their public numbers, works out your voice from the evidence, and tells you something
+true about your own posting before it writes a word.
+
+**Your edits become rules.** Change a draft and Lore reads the pattern behind the
+change rather than the words. After a couple of similar edits it writes the rule down
+and applies it to everything after, with a strength score and a count of the posts it
+has touched.
+
+**It measures the shape of your writing.** Sentence rhythm, how often you break a
+line, how often you go lowercase. Drafts get reflowed until they match your numbers
+instead of the model's.
+
+**It comes to you.** An optional Telegram bot sends a morning brief with your own
+numbers in it, takes plain-language replies, and drafts on request. On a quiet day it
+says nothing, because an invented insight is worse than none.
+
+## What it needs
+
+Only two things are required.
+
+**A database.** `docker compose up -d` gives you one. Any Postgres works.
+
+**A model backend.** Two ways, and the first costs nothing beyond what you already pay:
+
+| | Agent CLI | API key |
+|---|---|---|
+| Setup | install Claude Code or Codex, sign in once | paste a key in `.env.local` |
+| Cost | included in your subscription | per token |
+| Images | no | yes |
+| Speed | slower, it spawns a process | faster |
+
+Lore prefers a key when one is set, because setting a key is a deliberate choice.
+`LORE_PROVIDER=cli` forces the CLI anyway.
+
+Everything else is optional and degrades quietly when it is absent: Telegram, X
+lookups, voice interviews, outgoing webhooks. The setup page lists what each one
+turns on.
+
+## Drive it from Claude
+
+Lore ships an MCP server, so Claude can read your voice and write in it without
+you leaving the chat.
+
+```bash
+claude mcp add lore -- npm --prefix /path/to/lore run mcp
+```
+
+Claude Desktop wants the same thing in its config file instead:
+
+```json
+{
+  "mcpServers": {
+    "lore": { "command": "npm", "args": ["--prefix", "/path/to/lore", "run", "mcp"] }
+  }
+}
+```
+
+It exposes five tools: `list_brands`, `get_voice`, `list_drafts`, `generate_post`
+and `save_idea`. The server talks to your local database directly, so it inherits
+whatever is already configured and sends nothing anywhere else. `docs/CONNECTOR.md`
+has the detail.
+
+## Sign-in
+
+First run prints a one-time link that makes you the owner. That is enough for a
+single-user instance, and the link stops working the moment it is used.
+
+For anything beyond that, set up either a magic link (`RESEND_API_KEY` plus
+`LORE_MAIL_FROM` on a domain you have verified) or Google OAuth
+(`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`). Neither is required to use Lore.
+
+## Running it on a server
+
+Set `NEXT_PUBLIC_APP_URL` to the real origin, put a strong `AUTH_SECRET` in place,
+and use a real sign-in method rather than the claim link. Set `CRON_SECRET` if you
+want the scheduled jobs, and `AGENT_ENABLED=true` only when you actually want the
+background agent spending model calls.
+
+The `/setup` page stops being public the moment the instance has an owner.
+
+## Layout
+
+```
+app/            routes. (app) is signed-in, (marketing) is public, /setup is the wizard
+lib/providers/  how Lore talks to a model: CLI, API key, or relay
+lib/setup/      one capability registry behind both `npm run doctor` and /setup
+lib/db/         drizzle schema
+worker/         the background agent: briefs, scheduling, Telegram
+mcp/            the MCP server that Claude connects to
+docs/           SETUP.md, CONNECTOR.md and WEBHOOKS.md
+```
+
+## Commands
+
+```bash
+npm run dev             # http://localhost:3000
+npm run doctor          # what is configured, what is missing, how to fix it
+npm run db:push         # apply the schema
+npm run db:studio       # browse the data
+npm run worker          # the background agent, off unless AGENT_ENABLED=true
+npm run telegram:pair   # link a Telegram chat to a brand
+npm run mcp             # the MCP server, for Claude and other MCP clients
+npm test                # unit tests
+```
+
+## Contributing
+
+Issues and pull requests are welcome. `CONTRIBUTING.md` covers the setup and what a
+good change looks like. To report a security problem, read `SECURITY.md` first and
+do not open a public issue.
+
+## Licence
+
+AGPL-3.0. Use it, change it, self-host it. If you run a modified Lore as a service
+for other people, publish your changes. See `LICENSE`.

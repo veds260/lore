@@ -1,0 +1,147 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: "General Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+}
+
+/* ─── Lore design tokens — Notion-warm palette ───────────────────────────── */
+:root {
+  /* Backgrounds */
+  --background: #FBFAF7;       /* warm off-white page */
+  --card: #FFFFFF;
+  --popover: #FFFFFF;
+  --sidebar: #F4F3EF;          /* slightly warmer than card */
+
+  /* Text */
+  --foreground: #37352F;       /* ink-not-black */
+  --card-foreground: #37352F;
+  --popover-foreground: #37352F;
+  --sidebar-foreground: #37352F;
+  --muted-foreground: #787774; /* labels, metadata */
+
+  /* Surfaces */
+  --muted: #F1EFE9;
+  --secondary: #F1EFE9;
+  --secondary-foreground: #37352F;
+  --accent: #ECEAE4;
+  --accent-foreground: #37352F;
+
+  /* Brand accent — Notion blue, used sparingly */
+  --primary: #2383E2;
+  --primary-foreground: #FFFFFF;
+
+  /* Borders */
+  --border: #E9E9E7;
+  --input: #E9E9E7;
+  --ring: #2383E2;
+
+  /* Destructive */
+  --destructive: #E03E3E;
+
+  /* Charts — warm desaturated scale */
+  --chart-1: #2383E2;
+  --chart-2: #6B7F9E;
+  --chart-3: #9B8EA0;
+  --chart-4: #C4B5A5;
+  --chart-5: #E9E9E7;
+
+  /* Sidebar specifics */
+  --sidebar-primary: #2383E2;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #ECEAE4;
+  --sidebar-accent-foreground: #37352F;
+  --sidebar-border: #E9E9E7;
+  --sidebar-ring: #2383E2;
+
+  --radius: 0.5rem;
+}
+
+/* No dark mode for now — desktop-first, single-theme SaaS */
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01", "ss03";
+  }
+  html {
+    font-family: "General Sans", ui-sans-serif, system-ui, sans-serif;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    letter-spacing: -0.011em;
+    color: var(--foreground);
+  }
+}
+
+/* ─── Lore utility classes ───────────────────────────────────────────────── */
+@layer utilities {
+  /* Left-edge confidence bar — Delphi-style, used on skill cards */
+  .confidence-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    border-radius: 3px 0 0 3px;
+    background-color: var(--primary);
+  }
+
+  /* Mono numerics — scores, counts, engagement numbers */
+  .tabular {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.8125rem;
+  }
+
+  /* Warm surface hover */
+  .hover-warm {
+    transition: background-color 120ms ease;
+  }
+  .hover-warm:hover {
+    background-color: var(--sidebar);
+  }
+}
