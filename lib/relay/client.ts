@@ -9,7 +9,7 @@
  * The key is a credential. Never log it or put it in an error message.
  */
 
-const DEFAULT_RELAY_URL = 'https://invigorating-charm-production-661c.up.railway.app';
+const DEFAULT_RELAY_URL = 'https://trylore.xyz';
 const KEY_SETTING = 'relay_key';
 const KEY_CACHE_MS = 60_000;
 const DEFAULT_TIMEOUT_MS = 15_000;

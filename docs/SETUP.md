@@ -121,7 +121,7 @@ The worker long-polls Telegram and remembers its place, so a restart never repla
 **Hosted: use a webhook.** Faster and cheaper to run.
 ```bash
 # in .env.local
-NEXT_PUBLIC_APP_URL=https://your-lore.up.railway.app
+NEXT_PUBLIC_APP_URL=https://your-domain.com
 TELEGRAM_WEBHOOK_SECRET=$(openssl rand -hex 32)
 
 npm run telegram:register
