@@ -105,7 +105,10 @@ async function windowsChecks() {
   ].join('\r\n'));
 
   process.env.PATH = binDir;
-  check('whichBin finds the .cmd shim from the bare name', (await whichBin('claude')) === shim);
+  // PATHEXT is upper case and Windows does not care about case, so compare the way
+  // Windows would rather than insisting on the spelling the file was created with.
+  const found = await whichBin('claude');
+  check('whichBin finds the .cmd shim from the bare name', found?.toLowerCase() === shim.toLowerCase());
   check('whichBin does not invent one', (await whichBin('definitely-not-installed')) === null);
   check('whichBin accepts a full path that already has its extension', (await whichBin(shim)) === shim);
   check('whichBin looks in the extra directories too', (await whichBin('claude', [binDir])) !== null);

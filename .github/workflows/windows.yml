@@ -135,7 +135,10 @@ jobs:
           $errLog = Join-Path $PWD 'dev-err.log'
           New-Item -ItemType File -Path $outLog, $errLog -Force | Out-Null
 
-          $npm = (Get-Command npm).Source
+          # npm.cmd by name: Start-Process cannot run the npm.ps1 that sits beside it.
+          $npm = (Get-Command npm.cmd -ErrorAction SilentlyContinue).Source
+          if (-not $npm) { $npm = (Get-Command npm).Source }
+          Write-Host "starting $npm run dev"
           $dev = Start-Process -FilePath $npm -ArgumentList 'run', 'dev' -PassThru -NoNewWindow `
                    -RedirectStandardOutput $outLog -RedirectStandardError $errLog
 
