@@ -1,5 +1,4 @@
-import { spawn } from 'node:child_process';
-import { browserOpeners, isWsl, whichBin } from '../platform';
+import { browserOpeners, isWsl, spawnBin, whichBin } from '../platform';
 
 // Opens the setup link once the server answers, only on a developer machine. A
 // deployed server has nobody sitting at it, so it just prints the link.
@@ -25,11 +24,14 @@ export async function openWhenReady(base: string, url: string) {
  * nothing and no error, because the link was already printed.
  */
 export async function openUrl(url: string): Promise<string | null> {
+  const windows = process.platform === 'win32';
   for (const [cmd, args] of browserOpeners(url, process.platform, isWsl())) {
     const bin = await whichBin(cmd);
     if (!bin) continue;
     try {
-      const child = spawn(bin, args, { stdio: 'ignore', detached: true });
+      // On Windows the arguments already carry their own quotes, because `start` is
+      // a cmd builtin and cmd, not Node, is the thing that parses them.
+      const child = spawnBin(bin, args, { stdio: 'ignore', detached: true, windowsVerbatimArguments: windows });
       child.on('error', () => {});
       child.unref();
       return cmd;

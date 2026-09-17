@@ -1,8 +1,8 @@
-import { spawn } from 'node:child_process';
+import type { spawn } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
-import { agentBinDirs, whichBin } from '../platform';
+import { agentBinDirs, spawnBin, whichBin } from '../platform';
 import type { GenerateOptions, Provider } from './types';
 import { ProviderError } from './types';
 
@@ -78,9 +78,11 @@ const SPECS: Record<CliKind, CliSpec> = {
 
 /**
  * Both CLIs are usually a global npm install, but on Linux they just as often sit
- * in ~/.local/bin or ~/.claude/local, which a server process rarely has on its
- * PATH. We look there too, and then run the full path we found rather than the
- * bare name, so the child does not have to find it again.
+ * in ~/.local/bin or ~/.claude/local, and on Windows in %APPDATA%\npm, none of
+ * which a server process reliably has on its PATH. We look there too, and then run
+ * the full path we found rather than the bare name, so the child does not have to
+ * find it again. On Windows that full path is usually a .cmd shim, which is why
+ * every call here goes through spawnBin.
  */
 async function onPath(bin: string): Promise<string | null> {
   return whichBin(bin, agentBinDirs());
@@ -131,7 +133,7 @@ function runQuiet(bin: string, args: string[], timeoutMs: number, env: NodeJS.Pr
     let out = '';
     let child;
     try {
-      child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd: tmpdir(), env });
+      child = spawnBin(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd: tmpdir(), env });
     } catch (err) {
       resolve({ code: null, out: err instanceof Error ? err.message : String(err) });
       return;
@@ -229,7 +231,7 @@ export async function startCliLogin(kind: CliKind): Promise<Omit<LoginRun, 'chil
 
   const run: LoginRun = { kind, startedAt: Date.now(), done: false, code: null };
   let out = '';
-  const child = spawn(/*turbopackIgnore: true*/ bin, spec.loginArgs, { stdio: ['pipe', 'pipe', 'pipe'], cwd: tmpdir(), env });
+  const child = spawnBin(bin, spec.loginArgs, { stdio: ['pipe', 'pipe', 'pipe'], cwd: tmpdir(), env });
   run.child = child;
   const onData = (d: Buffer) => {
     out += d.toString();
@@ -282,6 +284,12 @@ function childEnv(bin?: string): NodeJS.ProcessEnv {
     'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LC_ALL', 'TERM', 'TMPDIR',
     'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'APPDATA', 'LOCALAPPDATA', 'USERPROFILE',
     'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy',
+    // Windows. Without SystemRoot a child cannot even resolve a hostname, and
+    // without ComSpec and PATHEXT a .cmd shim has nothing to run it.
+    'SystemRoot', 'windir', 'SystemDrive', 'ComSpec', 'PATHEXT', 'TEMP', 'TMP',
+    'USERNAME', 'USERDOMAIN', 'HOMEDRIVE', 'HOMEPATH', 'ProgramData',
+    'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432', 'NUMBER_OF_PROCESSORS',
+    'PROCESSOR_ARCHITECTURE',
   ];
   const env: Record<string, string> = {};
   for (const k of keep) {
@@ -318,7 +326,7 @@ async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
 
 function run(spec: CliSpec, bin: string, args: string[], input: string, timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, {
+    const child = spawnBin(bin, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       // Never inherit the parent's cwd blindly: the agent may read files relative to it.
       cwd: tmpdir(),

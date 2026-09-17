@@ -14,7 +14,17 @@ If you get stuck at any point, run `npm run doctor`. It checks everything below 
 
 macOS and Linux run Lore as they are. On Debian and Ubuntu the packaged `nodejs` is usually too old, so install Node from [NodeSource](https://deb.nodesource.com) or [nvm](https://github.com/nvm-sh/nvm) rather than apt.
 
-**Windows goes through WSL2.** There is no native Windows build. Open PowerShell as administrator, run `wsl --install`, restart, and then run every command in this guide inside the Ubuntu terminal it gives you. Keep the clone on the Linux side, somewhere under `~`, because npm installs on `/mnt/c` are slow enough to feel broken. Lore still opens your normal Windows browser: it uses `wslview` when the `wslu` package is installed, and falls back to `cmd.exe /c start`. Docker Desktop works too, with its WSL2 integration turned on for your distro.
+**Windows runs Lore directly.** Open PowerShell and run:
+
+```powershell
+irm https://raw.githubusercontent.com/veds260/lore/main/install.ps1 | iex
+```
+
+That checks Node, clones, installs, finds a Postgres, creates the tables and starts the app, and it asks before installing anything. When Node is missing it offers `winget install OpenJS.NodeJS.LTS`. For the database it takes Docker Desktop if the engine is running, otherwise the PostgreSQL service if you have one, otherwise it tells you to run `winget install --id PostgreSQL.PostgreSQL.16` and come back. A Postgres installed that way wants the password you set for the `postgres` user, and the installer asks for it rather than guessing. Every command further down this guide works the same in PowerShell, `docker compose up -d` and `npm run dev` included.
+
+Two Windows details worth knowing. A global npm install puts `claude` and `codex` in `%APPDATA%\npm` as `.cmd` shims, and Lore looks there and starts them through `cmd.exe`, which is the only way Node will run a shim. Starting a PostgreSQL service that is installed but stopped needs an administrator prompt, and the installer says so instead of failing quietly.
+
+**WSL2 is the other way**, if you would rather have a Linux shell. Run `wsl --install` in an administrator PowerShell, restart, then follow the macOS and Linux instructions inside the Ubuntu terminal. Keep the clone on the Linux side, somewhere under `~`, because npm installs on `/mnt/c` are slow enough to feel broken. Lore there opens your normal Windows browser through `wslview` when the `wslu` package is installed, and `cmd.exe /c start` otherwise.
 
 ---
 
@@ -100,6 +110,7 @@ brew install postgresql@16 && brew services start postgresql@16   # macOS
 sudo apt-get install -y postgresql && sudo service postgresql start   # Debian, Ubuntu, WSL2
 sudo dnf install -y postgresql-server && sudo postgresql-setup --initdb && sudo systemctl enable --now postgresql   # Fedora
 sudo pacman -S postgresql   # Arch
+winget install --id PostgreSQL.PostgreSQL.16   # Windows
 ```
 
 On macOS [Postgres.app](https://postgresapp.com) is the no-terminal version of the same thing. A fresh Linux install has no role for your user yet, so make one with `sudo -u postgres createuser -s $(id -un)` before anything else. Then create an empty database with `createdb lore`, or `psql -d postgres -c 'create database lore'` if `createdb` is not there, and point `DATABASE_URL` at it, for example `postgresql://yourname@localhost:5432/lore`.
@@ -215,7 +226,7 @@ You likely have both a webhook and the poller configured. Pick one. `npm run tel
 Expected when using a CLI. Add an API key if you want them.
 
 **Your browser does not open on first run**
-The link is printed in the terminal, so open that by hand. On a plain Linux desktop Lore uses `xdg-open`, which comes from the `xdg-utils` package, and inside WSL2 it tries `wslview` from `wslu` first and then `cmd.exe`. Over ssh nothing opens at all, which is deliberate.
+The link is printed in the terminal, so open that by hand. On a plain Linux desktop Lore uses `xdg-open`, which comes from the `xdg-utils` package. On Windows it runs `cmd /c start` and falls back to `Start-Process`, and inside WSL2 it tries `wslview` from `wslu` first and then `cmd.exe`. Over ssh nothing opens at all, which is deliberate.
 
 **The setup page says Claude Code is not installed and you know it is**
 Lore looks on `PATH` and in `~/.local/bin`, `~/bin`, `~/.claude/local`, `~/.bun/bin`, `~/.npm-global/bin`, `/usr/local/bin` and Homebrew. If yours is somewhere else, either add that directory to `PATH` before starting Lore, or symlink the binary into `~/.local/bin`.

@@ -52,11 +52,13 @@ function main() {
   }
 }
 
+// Only "something is already listening there" counts as taken. A machine with IPv6
+// switched off cannot bind ::1 at all, and that is not a busy port.
 async function portFree(host: string, port: number): Promise<boolean> {
   const { createServer } = await import('node:net');
   return new Promise(resolve => {
     const probe = createServer();
-    probe.once('error', () => resolve(false));
+    probe.once('error', (err: NodeJS.ErrnoException) => resolve(err.code !== 'EADDRINUSE'));
     probe.once('listening', () => probe.close(() => resolve(true)));
     probe.listen(port, host);
   });
@@ -69,7 +71,10 @@ async function startDev() {
   // at whatever else is already answering on this one.
   for (const h of new Set([host, '127.0.0.1', '::1'])) {
     if (!(await portFree(h, port))) {
-      process.stdout.write(`\n  Port ${port} is taken on ${h}. Stop what is using it, or run: PORT=3001 npm run dev\n\n`);
+      const other = process.platform === 'win32'
+        ? '$env:PORT=3001; npm run dev'
+        : 'PORT=3001 npm run dev';
+      process.stdout.write(`\n  Port ${port} is taken on ${h}. Stop what is using it, or run: ${other}\n\n`);
       process.exit(1);
     }
   }
