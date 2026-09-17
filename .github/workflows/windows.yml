@@ -57,9 +57,20 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $svc = Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $svc) { throw 'This image has no PostgreSQL service.' }
-          Write-Host "found $($svc.Name), currently $($svc.Status)"
-          if ($svc.Status -ne 'Running') { Start-Service $svc.Name }
-          $svc.WaitForStatus('Running', (New-TimeSpan -Seconds 90))
+          Write-Host "found $($svc.Name), currently $($svc.Status), start type $($svc.StartType)"
+          # The image leaves it installed and switched off, so turn it back on first.
+          if ($svc.StartType -eq 'Disabled') { Set-Service -Name $svc.Name -StartupType Manual }
+          if ($svc.Status -ne 'Running') {
+            try {
+              Start-Service $svc.Name -ErrorAction Stop
+            } catch {
+              Write-Host "Start-Service said: $_"
+              Get-EventLog -LogName Application -Source '*postgres*' -Newest 10 -ErrorAction SilentlyContinue |
+                ForEach-Object { Write-Host "  $($_.TimeGenerated) $($_.Message)" }
+              throw
+            }
+          }
+          (Get-Service $svc.Name).WaitForStatus('Running', (New-TimeSpan -Seconds 90))
 
           $bin = $env:PGBIN
           if (-not $bin -or -not (Test-Path (Join-Path $bin 'psql.exe'))) {
