@@ -25,10 +25,11 @@ jobs:
     defaults:
       run:
         shell: pwsh
-    env:
-      LORE_DIR: ${{ runner.temp }}\lore
     steps:
       - uses: actions/checkout@v4
+
+      - name: Where Lore gets installed
+        run: "LORE_DIR=$env:RUNNER_TEMP\lore" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: install.ps1 parses, in PowerShell 7 and in Windows PowerShell 5.1
         shell: pwsh
