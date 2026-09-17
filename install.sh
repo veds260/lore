@@ -7,6 +7,9 @@
 # Postgres if it can, writes a local .env.local, creates the tables, and hands
 # you a running app. It never asks for a password and never writes outside the
 # directory it creates.
+#
+# Runs on macOS and Linux, and on Windows inside a WSL2 distro. Needs git, Node 20
+# or newer, and either Docker or a Postgres it can reach. POSIX sh, no bashisms.
 
 set -eu
 
@@ -23,15 +26,75 @@ need() {
   command -v "$1" >/dev/null 2>&1 || die "$1 is required. $2"
 }
 
+has() { command -v "$1" >/dev/null 2>&1; }
+
+# macOS, Linux, or Linux running inside Windows (WSL2). There is no native Windows
+# path on purpose: on Windows you install WSL2 and run all of this inside it.
+case "$(uname -s 2>/dev/null || echo unknown)" in
+  Darwin) PLATFORM=mac ;;
+  Linux)
+    if [ -n "${WSL_DISTRO_NAME:-}" ] || grep -qi microsoft /proc/version 2>/dev/null; then
+      PLATFORM=wsl
+    else
+      PLATFORM=linux
+    fi
+    ;;
+  MINGW*|MSYS*|CYGWIN*) PLATFORM=windows ;;
+  *) PLATFORM=other ;;
+esac
+
+# What to type to get Node here. Debian and Ubuntu still package a Node too old
+# for Lore, so they get NodeSource rather than plain apt-get install nodejs.
+node_hint() {
+  if [ "$PLATFORM" = mac ]; then
+    printf 'Install it from https://nodejs.org, or run: brew install node'
+  elif has apt-get; then
+    printf 'The nodejs package on Debian and Ubuntu is usually too old, so use NodeSource: curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs'
+  elif has dnf; then
+    printf 'Run: sudo dnf install -y nodejs'
+  elif has pacman; then
+    printf 'Run: sudo pacman -S nodejs npm'
+  elif has zypper; then
+    printf 'Run: sudo zypper install -y nodejs22'
+  elif has apk; then
+    printf 'Run: sudo apk add nodejs npm'
+  else
+    printf 'Install Node %s or newer from https://nodejs.org, or with nvm from https://github.com/nvm-sh/nvm' "$MIN_NODE"
+  fi
+}
+
+# What to type to get a Postgres here, when there is no Docker.
+postgres_hint() {
+  if [ "$PLATFORM" = mac ]; then
+    printf 'brew install postgresql@16 && brew services start postgresql@16, or Postgres.app from https://postgresapp.com'
+  elif has apt-get; then
+    printf 'sudo apt-get install -y postgresql && sudo service postgresql start'
+  elif has dnf; then
+    printf 'sudo dnf install -y postgresql-server && sudo postgresql-setup --initdb && sudo systemctl enable --now postgresql'
+  elif has pacman; then
+    printf 'sudo pacman -S postgresql'
+  elif has zypper; then
+    printf 'sudo zypper install -y postgresql-server'
+  elif has apk; then
+    printf 'sudo apk add postgresql'
+  else
+    printf 'install Postgres 14 or newer from https://www.postgresql.org/download'
+  fi
+}
+
 say "Installing Lore"
 
+if [ "$PLATFORM" = windows ]; then
+  die "This looks like Git Bash or MSYS. On Windows, Lore runs inside WSL2: open PowerShell as administrator, run wsl --install, restart, then run this same command in your Ubuntu terminal."
+fi
+
 need git "Install it from https://git-scm.com"
-need node "Install Node $MIN_NODE or newer from https://nodejs.org"
-need npm "It ships with Node. Reinstall Node from https://nodejs.org"
+need node "$(node_hint)"
+need npm "It ships with Node. $(node_hint)"
 
 NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]')
 if [ "$NODE_MAJOR" -lt "$MIN_NODE" ]; then
-  die "Node $MIN_NODE or newer is required. You have $(node -v)."
+  die "Node $MIN_NODE or newer is required. You have $(node -v). $(node_hint)"
 fi
 
 if [ -e "$DIR" ]; then
@@ -63,18 +126,35 @@ tail_log() {
 }
 
 port_busy() {
-  if command -v nc >/dev/null 2>&1; then
+  if has nc; then
     nc -z 127.0.0.1 "$1" >/dev/null 2>&1
-  elif command -v lsof >/dev/null 2>&1; then
+  elif has ss; then
+    ss -ltnH "sport = :$1" 2>/dev/null | grep -q .
+  elif has lsof; then
     lsof -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
   else
     return 1
   fi
 }
 
+# createdb ships with the Postgres client tools on most systems but not all of
+# them, so fall back to plain SQL through psql.
+make_db() {
+  if has createdb; then
+    createdb "$1" >>"$LOG" 2>&1
+  else
+    psql -d postgres -c "create database \"$1\"" >>"$LOG" 2>&1
+  fi
+}
+
 DB_NAME="${LORE_DB_NAME:-lore}"
 
-if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+DOCKER=no
+if has docker && docker info >/dev/null 2>&1; then
+  DOCKER=yes
+fi
+
+if [ "$DOCKER" = yes ]; then
   if port_busy 5432; then
     DB_WHY="Port 5432 is already taken by another program, probably a Postgres you already run, so the Docker database could not start. Stop that program and run docker compose up -d, or point DATABASE_URL in .env.local at an empty database on it."
   else
@@ -96,11 +176,11 @@ if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
       DB_WHY="docker compose up -d failed, see the lines above."
     fi
   fi
-elif command -v psql >/dev/null 2>&1; then
+elif has psql; then
   if ! psql -d postgres -c 'select 1' >>"$LOG" 2>&1; then
     step "found psql, but could not reach a running postgres:"
     tail_log 4
-    DB_WHY="psql is installed but no Postgres answered. Start it, or install Docker and run docker compose up -d."
+    DB_WHY="psql is installed but no Postgres answered as $(id -un). Start the server, and on a fresh Linux install give yourself a role with sudo -u postgres createuser -s $(id -un). Docker is the other way: install it and run docker compose up -d in $DIR."
   elif psql -d "$DB_NAME" -c 'select 1' >/dev/null 2>&1 && [ "${LORE_REUSE_DB:-}" != yes ]; then
     DB_WHY="Your local Postgres already has a database called $DB_NAME, and Lore will not write into a database it did not create. Run the installer again with LORE_DB_NAME=some_new_name, or with LORE_REUSE_DB=yes if that database really is for Lore."
   else
@@ -108,10 +188,10 @@ elif command -v psql >/dev/null 2>&1; then
       step "using the existing $DB_NAME database on your local postgres, as LORE_REUSE_DB=yes asked"
     else
       step "creating a database called $DB_NAME on the postgres already running here"
-      createdb "$DB_NAME" >>"$LOG" 2>&1 || { tail_log 4; }
+      make_db "$DB_NAME" || { tail_log 4; }
     fi
     if psql -d "$DB_NAME" -c 'select 1' >>"$LOG" 2>&1; then
-      LOCAL_URL="postgresql://$(whoami)@localhost:5432/$DB_NAME"
+      LOCAL_URL="postgresql://$(id -un)@localhost:5432/$DB_NAME"
       if grep -q '^DATABASE_URL=' .env.local 2>/dev/null; then
         sed -i.bak "s|^DATABASE_URL=.*|DATABASE_URL=${LOCAL_URL}|" .env.local && rm -f .env.local.bak
       else
@@ -122,8 +202,10 @@ elif command -v psql >/dev/null 2>&1; then
       DB_WHY="Could not open the $DB_NAME database on your local postgres."
     fi
   fi
+elif has docker; then
+  DB_WHY="Docker is installed but its daemon did not answer. Start Docker Desktop, or on Linux run sudo systemctl start docker and add yourself to the docker group with sudo usermod -aG docker \"$(id -un)\", then log out and back in. A local Postgres works too: $(postgres_hint)"
 else
-  DB_WHY="Neither Docker nor Postgres was found on this computer."
+  DB_WHY="No Postgres and no Docker on this computer. Either install Docker from https://docs.docker.com/get-docker and run docker compose up -d in $DIR, or install Postgres: $(postgres_hint)"
 fi
 
 if [ "$DB_READY" = yes ]; then

@@ -6,6 +6,18 @@ If you get stuck at any point, run `npm run doctor`. It checks everything below 
 
 ---
 
+## What you need first
+
+- Node 20 or newer, with the npm that comes with it. `node -v` tells you.
+- git.
+- Postgres, or Docker to run one for you.
+
+macOS and Linux run Lore as they are. On Debian and Ubuntu the packaged `nodejs` is usually too old, so install Node from [NodeSource](https://deb.nodesource.com) or [nvm](https://github.com/nvm-sh/nvm) rather than apt.
+
+**Windows goes through WSL2.** There is no native Windows build. Open PowerShell as administrator, run `wsl --install`, restart, and then run every command in this guide inside the Ubuntu terminal it gives you. Keep the clone on the Linux side, somewhere under `~`, because npm installs on `/mnt/c` are slow enough to feel broken. Lore still opens your normal Windows browser: it uses `wslview` when the `wslu` package is installed, and falls back to `cmd.exe /c start`. Docker Desktop works too, with its WSL2 integration turned on for your distro.
+
+---
+
 ## The five minute version
 
 ```bash
@@ -81,7 +93,16 @@ That matches this line in `.env.local`:
 ```
 DATABASE_URL=postgresql://postgres:lore@localhost:5432/lore
 ```
-Without Docker, [Postgres.app](https://postgresapp.com) on macOS or `brew install postgresql@16` both work. Create an empty database for Lore with `createdb lore` and point `DATABASE_URL` at it, for example `postgresql://yourname@localhost:5432/lore`.
+Without Docker, install Postgres however your system likes to:
+
+```bash
+brew install postgresql@16 && brew services start postgresql@16   # macOS
+sudo apt-get install -y postgresql && sudo service postgresql start   # Debian, Ubuntu, WSL2
+sudo dnf install -y postgresql-server && sudo postgresql-setup --initdb && sudo systemctl enable --now postgresql   # Fedora
+sudo pacman -S postgresql   # Arch
+```
+
+On macOS [Postgres.app](https://postgresapp.com) is the no-terminal version of the same thing. A fresh Linux install has no role for your user yet, so make one with `sudo -u postgres createuser -s $(id -un)` before anything else. Then create an empty database with `createdb lore`, or `psql -d postgres -c 'create database lore'` if `createdb` is not there, and point `DATABASE_URL` at it, for example `postgresql://yourname@localhost:5432/lore`.
 
 **Hosted:** any Postgres works. Neon, Supabase and Railway all have free tiers. Copy their connection string into `DATABASE_URL`.
 
@@ -192,3 +213,9 @@ You likely have both a webhook and the poller configured. Pick one. `npm run tel
 
 **Image features are off**
 Expected when using a CLI. Add an API key if you want them.
+
+**Your browser does not open on first run**
+The link is printed in the terminal, so open that by hand. On a plain Linux desktop Lore uses `xdg-open`, which comes from the `xdg-utils` package, and inside WSL2 it tries `wslview` from `wslu` first and then `cmd.exe`. Over ssh nothing opens at all, which is deliberate.
+
+**The setup page says Claude Code is not installed and you know it is**
+Lore looks on `PATH` and in `~/.local/bin`, `~/bin`, `~/.claude/local`, `~/.bun/bin`, `~/.npm-global/bin`, `/usr/local/bin` and Homebrew. If yours is somewhere else, either add that directory to `PATH` before starting Lore, or symlink the binary into `~/.local/bin`.

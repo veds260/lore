@@ -45,7 +45,7 @@ async function checkModel(): Promise<Capability> {
     fix: s.ready ? undefined : [
       'Option A, runs on a Claude or ChatGPT plan you already pay for:',
       '  Claude: `npm install -g @anthropic-ai/claude-code`, then `claude auth login`',
-      '  ChatGPT: `npm install -g @openai/codex` (or `brew install codex`), then `codex login`',
+      '  ChatGPT: `npm install -g @openai/codex`, then `codex login`',
       '  Then pick it on the setup page at /setup, or re-run this check.',
       'Option B, pay per use with an API key:',
       '  Paste it on the setup page, or put ANTHROPIC_API_KEY (or OPENAI_API_KEY / OPENROUTER_API_KEY) in .env.local',

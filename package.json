@@ -12,9 +12,11 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "telegram:pair": "tsx scripts/telegram-pair.ts",
+    "telegram:register": "tsx scripts/telegram-register.ts",
     "relay:connect": "tsx scripts/relay-connect.ts",
     "test:pairing": "tsx tests/pairing.test.ts",
-    "test": "tsx tests/pairing.test.ts",
+    "test:platform": "tsx tests/platform.test.ts",
+    "test": "tsx tests/pairing.test.ts && tsx tests/platform.test.ts",
     "setup": "tsx scripts/predev.ts && drizzle-kit push",
     "mcp": "tsx mcp/server.mts",
     "password:reset": "tsx scripts/password-reset.ts"

@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { browserOpeners, isWsl, whichBin } from '../platform';
 
 // Opens the setup link once the server answers, only on a developer machine. A
 // deployed server has nobody sitting at it, so it just prints the link.
@@ -15,14 +16,26 @@ export async function openWhenReady(base: string, url: string) {
     }
   }
 
-  const [cmd, args] = process.platform === 'darwin' ? ['open', [url]]
-    : process.platform === 'win32' ? ['cmd', ['/c', 'start', '""', url]]
-      : ['xdg-open', [url]];
-  try {
-    const child = spawn(cmd, args, { stdio: 'ignore', detached: true });
-    child.on('error', () => {});
-    child.unref();
-  } catch {
-    // No browser on this machine, the printed link still works.
+  await openUrl(url);
+}
+
+/**
+ * Tries each opener this platform knows about and stops at the first one that is
+ * installed. A machine with no browser at all, like a server over ssh, gets
+ * nothing and no error, because the link was already printed.
+ */
+export async function openUrl(url: string): Promise<string | null> {
+  for (const [cmd, args] of browserOpeners(url, process.platform, isWsl())) {
+    const bin = await whichBin(cmd);
+    if (!bin) continue;
+    try {
+      const child = spawn(bin, args, { stdio: 'ignore', detached: true });
+      child.on('error', () => {});
+      child.unref();
+      return cmd;
+    } catch {
+      // that one would not start, try the next
+    }
   }
+  return null;
 }

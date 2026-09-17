@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
-import { access, constants, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
+import { agentBinDirs, whichBin } from '../platform';
 import type { GenerateOptions, Provider } from './types';
 import { ProviderError } from './types';
 
@@ -23,8 +24,10 @@ interface CliSpec {
   loginArgs: string[];
   /** argv that reports whether the CLI is signed in. */
   statusArgs: string[];
-  /** Commands that install it, most common first. */
+  /** Commands that install it, most common first. Works on every platform. */
   install: string[];
+  /** A Homebrew alternative, offered on macOS only. */
+  brew?: string;
   /** Builds argv for a single non-interactive completion. `outFile` is a scratch file the CLI may write its answer to. */
   args(outFile: string): string[];
   /** Pull the answer back out, from stdout or the scratch file. */
@@ -60,7 +63,8 @@ const SPECS: Record<CliKind, CliSpec> = {
     login: 'codex login',
     loginArgs: ['login'],
     statusArgs: ['login', 'status'],
-    install: ['npm install -g @openai/codex', 'brew install codex'],
+    install: ['npm install -g @openai/codex'],
+    brew: 'brew install codex',
     // We run from a temp dir, which codex refuses by default as untrusted.
     // read-only sandbox for the same reason claude gets no tools. Codex prints its
     // progress to stdout, so the final answer is read from the -o file instead.
@@ -72,18 +76,14 @@ const SPECS: Record<CliKind, CliSpec> = {
   },
 };
 
+/**
+ * Both CLIs are usually a global npm install, but on Linux they just as often sit
+ * in ~/.local/bin or ~/.claude/local, which a server process rarely has on its
+ * PATH. We look there too, and then run the full path we found rather than the
+ * bare name, so the child does not have to find it again.
+ */
 async function onPath(bin: string): Promise<string | null> {
-  const dirs = (process.env.PATH ?? '').split(':').filter(Boolean);
-  for (const dir of dirs) {
-    const full = join(dir, bin);
-    try {
-      await access(full, constants.X_OK);
-      return full;
-    } catch {
-      // not here, keep looking
-    }
-  }
-  return null;
+  return whichBin(bin, agentBinDirs());
 }
 
 
@@ -157,9 +157,10 @@ export interface CliStatus {
 /** Installed and signed in are different things. This asks the CLI for both. */
 export async function cliStatus(kind: CliKind): Promise<CliStatus> {
   const spec = SPECS[kind];
-  if (!(await onPath(spec.bin))) return { installed: false, signedIn: false };
+  const bin = await onPath(spec.bin);
+  if (!bin) return { installed: false, signedIn: false };
 
-  const { code, out } = await runQuiet(spec.bin, spec.statusArgs, 20_000);
+  const { code, out } = await runQuiet(bin, spec.statusArgs, 20_000, childEnv(bin));
   let status: CliStatus;
 
   if (kind === 'claude') {
@@ -216,17 +217,19 @@ export async function startCliLogin(kind: CliKind): Promise<Omit<LoginRun, 'chil
   if (existing && !existing.done && Date.now() - existing.startedAt < LOGIN_MAX_MS) return loginState(kind)!;
 
   const spec = SPECS[kind];
-  if (!(await onPath(spec.bin))) throw new ProviderError(`${spec.label} is not installed. Install it with \`${spec.install[0]}\` first.`, 'cli', true);
+  const bin = await onPath(spec.bin);
+  if (!bin) throw new ProviderError(`${spec.label} is not installed. Install it with \`${installCommands(kind)[0]}\` first.`, 'cli', true);
 
-  // The sign-in opens a browser, which needs the display variables the model runs never get.
-  const env = childEnv();
-  for (const k of ['DISPLAY', 'WAYLAND_DISPLAY', 'BROWSER', 'DBUS_SESSION_BUS_ADDRESS', 'XDG_RUNTIME_DIR']) {
+  // The sign-in opens a browser, which needs the display variables the model runs
+  // never get. WSL_INTEROP and WSLENV are what lets a browser open on the Windows side.
+  const env = childEnv(bin);
+  for (const k of ['DISPLAY', 'WAYLAND_DISPLAY', 'BROWSER', 'DBUS_SESSION_BUS_ADDRESS', 'XDG_RUNTIME_DIR', 'WSL_DISTRO_NAME', 'WSL_INTEROP', 'WSLENV']) {
     if (process.env[k] !== undefined) env[k] = process.env[k];
   }
 
   const run: LoginRun = { kind, startedAt: Date.now(), done: false, code: null };
   let out = '';
-  const child = spawn(/*turbopackIgnore: true*/ spec.bin, spec.loginArgs, { stdio: ['pipe', 'pipe', 'pipe'], cwd: tmpdir(), env });
+  const child = spawn(/*turbopackIgnore: true*/ bin, spec.loginArgs, { stdio: ['pipe', 'pipe', 'pipe'], cwd: tmpdir(), env });
   run.child = child;
   const onData = (d: Buffer) => {
     out += d.toString();
@@ -247,9 +250,18 @@ export async function startCliLogin(kind: CliKind): Promise<Omit<LoginRun, 'chil
   return loginState(kind)!;
 }
 
+/**
+ * npm works on every platform Lore runs on, so it goes first. Homebrew is only
+ * offered on macOS, where most people already have it.
+ */
+function installCommands(kind: CliKind): string[] {
+  const { install, brew } = SPECS[kind];
+  return process.platform === 'darwin' && brew ? [...install, brew] : install;
+}
+
 export function cliInfo(kind: CliKind): { label: string; plan: string; login: string; install: string[] } {
-  const { label, plan, login, install } = SPECS[kind];
-  return { label, plan, login, install };
+  const { label, plan, login } = SPECS[kind];
+  return { label, plan, login, install: installCommands(kind) };
 }
 
 export async function detectClis(): Promise<CliKind[]> {
@@ -265,7 +277,7 @@ export async function detectClis(): Promise<CliKind[]> {
  * find its own credentials. Handing it the parent's env would pass DATABASE_URL,
  * AUTH_SECRET, Stripe keys and every API key to a process driven by a model.
  */
-function childEnv(): NodeJS.ProcessEnv {
+function childEnv(bin?: string): NodeJS.ProcessEnv {
   const keep = [
     'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LC_ALL', 'TERM', 'TMPDIR',
     'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'APPDATA', 'LOCALAPPDATA', 'USERPROFILE',
@@ -275,6 +287,13 @@ function childEnv(): NodeJS.ProcessEnv {
   for (const k of keep) {
     const v = process.env[k];
     if (v !== undefined) env[k] = v;
+  }
+  // We may have found the CLI somewhere that is not on this process's PATH, and a
+  // wrapper script usually calls its own neighbours, so put that directory back.
+  if (bin) {
+    const dir = dirname(bin);
+    const dirs = (env.PATH || '').split(delimiter).filter(Boolean);
+    if (!dirs.includes(dir)) env.PATH = [dir, ...dirs].join(delimiter);
   }
   return env as NodeJS.ProcessEnv;
 }
@@ -297,14 +316,13 @@ async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-function run(spec: CliSpec, args: string[], input: string, timeoutMs: number): Promise<string> {
-  const bin = spec.bin;
+function run(spec: CliSpec, bin: string, args: string[], input: string, timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       // Never inherit the parent's cwd blindly: the agent may read files relative to it.
       cwd: tmpdir(),
-      env: childEnv(),
+      env: childEnv(bin),
     });
 
     let stdout = '';
@@ -389,11 +407,15 @@ export function createCliProvider(kind: CliKind): Provider {
           true,
         );
       }
+      const bin = await onPath(spec.bin);
+      if (!bin) {
+        throw new ProviderError(`${spec.label} is not installed. Install it with \`${installCommands(kind)[0]}\` first.`, 'cli', true);
+      }
       return withSlot(async () => {
         const dir = await mkdtemp(join(tmpdir(), 'lore-cli-'));
         const outFile = join(dir, 'answer.txt');
         try {
-          const out = await run(spec, spec.args(outFile), opts.prompt, opts.timeoutMs ?? 180_000);
+          const out = await run(spec, bin, spec.args(outFile), opts.prompt, opts.timeoutMs ?? 180_000);
           const text = await spec.parse(out, outFile);
           if (!text) throw new ProviderError(`${spec.label} returned an empty response`, 'cli');
           return text;

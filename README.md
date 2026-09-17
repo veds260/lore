@@ -10,6 +10,9 @@ shared relay on limited free credits, and `LORE_RELAY=off` turns that off. Lore 
 posts for you. Every draft has a Post on X button that opens X with the text filled in,
 and you press send.
 
+macOS and Linux both work, and so does Windows once you have WSL2. You need Node 20
+or newer and either Docker or a Postgres you can point it at.
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/veds260/lore/main/install.sh | sh
 ```
@@ -54,7 +57,11 @@ says nothing, because an invented insight is worse than none.
 
 ## What it needs
 
-Only two things are required.
+**Node 20 or newer, on any of the three.** macOS and Linux run it directly. On
+Windows, open PowerShell as administrator, run `wsl --install`, restart, and then do
+everything inside your Ubuntu terminal, because the installer and both agent CLIs
+want a Unix shell. Lore inside WSL2 opens your normal Windows browser, through
+`wslview` if you have `wslu` installed and `cmd.exe /c start` otherwise.
 
 **A database.** `docker compose up -d` gives you one. Any Postgres works.
 
