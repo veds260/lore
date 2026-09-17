@@ -102,7 +102,7 @@ function Row({ draft, tone, profile, primaryLabel, primaryAction, primaryLoading
             )}
           </span>
         </div>
-        <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.5] text-foreground/90 line-clamp-5">
+        <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.5] text-foreground/90 line-clamp-[10]">
           {draft.content.replace(/\n{3,}/g, '\n\n').trim()}
         </p>
       </button>
