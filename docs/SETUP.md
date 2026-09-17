@@ -14,9 +14,8 @@ cd lore
 npm install
 cp .env.example .env.local
 
-# a database to keep your drafts in
-docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=lore --name lore-db postgres:16
-echo 'DATABASE_URL=postgresql://postgres:lore@localhost:5432/postgres' >> .env.local
+# a database to keep your drafts in, matching the DATABASE_URL already in .env.local
+docker compose up -d
 npm run db:push
 
 npm run doctor   # should say "Lore is ready"
@@ -36,15 +35,18 @@ Lore needs something to think with. Two ways, and the first one costs nothing ex
 If you have Claude Code or Codex installed and signed in, Lore will find it and use it. No API key, no per-token billing, it runs on the subscription you already pay for.
 
 ```bash
-claude          # run once, sign in, then quit
-npm run doctor  # should now say: Claude Code (claude)
+claude auth login   # Claude plan, opens a browser sign-in
+codex login         # or ChatGPT plan, same idea
+npm run doctor      # should now say: Claude Code (claude) or Codex (codex)
 ```
+
+You can also skip the terminal: the setup page shows whether each one is installed and signed in, and has a Sign in button that runs the same login for you.
 
 Lore shells out to the CLI for each request. Nothing is sent anywhere else.
 
 ### B. Use an API key
 
-If you would rather pay per token, or you want image features, put one of these in `.env.local`:
+If you would rather pay per token, or you want image features, paste a key on the setup page. It is tested with a real call and saved to `.env.local` only if it works. Or put one of these in `.env.local` yourself:
 
 ```
 ANTHROPIC_API_KEY=sk-ant-...
@@ -71,16 +73,15 @@ Image features are the only real gap. Lore tells you when something is off rathe
 
 Your drafts, voice profile, interviews and history live here. Postgres, local or hosted, your choice.
 
-**Local.** With Docker:
+**Local.** With Docker, from the Lore folder:
 ```bash
-docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=lore --name lore-db postgres:16
+docker compose up -d
 ```
-Without Docker, [Postgres.app](https://postgresapp.com) on macOS or `brew install postgresql@16` both work the same way.
-
-Then in `.env.local`:
+That matches this line in `.env.local`:
 ```
-DATABASE_URL=postgresql://postgres:lore@localhost:5432/postgres
+DATABASE_URL=postgresql://postgres:lore@localhost:5432/lore
 ```
+Without Docker, [Postgres.app](https://postgresapp.com) on macOS or `brew install postgresql@16` both work. Create an empty database for Lore with `createdb lore` and point `DATABASE_URL` at it, for example `postgresql://yourname@localhost:5432/lore`.
 
 **Hosted:** any Postgres works. Neon, Supabase and Railway all have free tiers. Copy their connection string into `DATABASE_URL`.
 

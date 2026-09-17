@@ -3,11 +3,10 @@
 // Chat-led onboarding: the checklist on the left injects scripted user
 // messages into a conversation with Lore, and the conversation IS the
 // onboarding. Steps strike through as they complete. The classic wizard
-// stays available at ?mode=classic.
+// stays available at ?mode=classic, which needs a full page load to take effect.
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { Check, Loader2, Send } from 'lucide-react';
 
 type StepId = 'meet' | 'connect_x' | 'audit' | 'style' | 'telegram';
@@ -26,6 +25,8 @@ here's how this works: i learn your voice from your real posts, not from a quest
 
 first step: connect your X so i can read your last posts. tap "Connect your X" on the left when you're ready.`;
 
+const X_EXTRAS = { href: '/setup?step=extras&item=twitter', label: 'Turn on X lookups' };
+
 const STYLE_OPTIONS = [
   { id: 'witty-short', label: 'Witty and short' },
   { id: 'deep-value',  label: 'Deep and valuable' },
@@ -35,6 +36,7 @@ const STYLE_OPTIONS = [
 interface Msg {
   role: 'user' | 'assistant';
   text: string;
+  link?: { href: string; label: string };
 }
 
 export function ChatOnboarding() {
@@ -55,6 +57,9 @@ export function ChatOnboarding() {
 
   // telegram
   const [telegramUrl, setTelegramUrl] = useState<string | null>(null);
+
+  // set when saving the brand shows X lookups are not configured
+  const [xOff, setXOff] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -106,13 +111,13 @@ export function ChatOnboarding() {
         if (json.message) {
           push({ role: 'assistant', text: json.message });
           complete('audit');
-          setShowStyleButtons(true);
-          complete('style'); // the audit ends on the style question; buttons answer it
+          setShowStyleButtons(true); // the audit ends on the style question; buttons answer it
         } else if (json.reason === 'no-posts') {
-          push({ role: 'assistant', text: "i don't see any posts on that account yet, so there's nothing to audit. no problem. we'll build your baseline from what you write with me. pick a style below and we keep moving." });
+          push(xOff
+            ? { role: 'assistant', text: "X lookups are off on this install, so i have no posts to audit. you can turn them on under Extras in setup. for now we'll build your baseline from what you write with me, so pick a style below.", link: X_EXTRAS }
+            : { role: 'assistant', text: "i don't see any posts on that account yet, so there's nothing to audit. we'll build your baseline from what you write with me instead. pick a style below and we keep moving." });
           complete('audit');
           setShowStyleButtons(true);
-          complete('style');
         } else {
           push({ role: 'assistant', text: 'connect your X first, then ask me again.' });
         }
@@ -174,8 +179,14 @@ export function ChatOnboarding() {
       }
       setShowConnectForm(false);
       complete('connect_x');
-      if (cleanHandle) {
-        push({ role: 'assistant', text: `connected as @${cleanHandle}. i pulled your recent posts. ask me for the audit, or tap "Hear the audit" on the left.` });
+      const data = (await res.json().catch(() => ({}))) as { x?: { available?: boolean; postsPulled?: number } };
+      if (cleanHandle && data.x?.available === false) {
+        setXOff(true);
+        push({ role: 'assistant', text: `saved @${cleanHandle}, but X lookups are off on this install, so i couldn't read your posts. turn them on under Extras in setup and i'll pull them. you can keep going without them.`, link: X_EXTRAS });
+      } else if (cleanHandle && !data.x?.postsPulled) {
+        push({ role: 'assistant', text: `saved @${cleanHandle}. i couldn't find recent posts on that account yet. ask me for the audit anyway, or tap "Hear the audit" on the left.` });
+      } else if (cleanHandle) {
+        push({ role: 'assistant', text: `connected as @${cleanHandle}. i pulled your last ${data.x?.postsPulled} posts. ask me for the audit, or tap "Hear the audit" on the left.` });
       } else {
         push({ role: 'assistant', text: `set up as ${cleanName}. no handle yet, so i have no posts to read. you can add one later in your profile. pick your style next.` });
         complete('audit');
@@ -245,12 +256,13 @@ export function ChatOnboarding() {
             Open your board
           </button>
         )}
-        <Link
+        {/* A plain link on purpose: the page reads ?mode=classic on load, so a client-side navigation to the same page would do nothing. */}
+        <a
           href="/onboarding?mode=classic"
           className="block mt-6 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
         >
           Prefer guided steps instead
-        </Link>
+        </a>
       </div>
 
       {/* Chat */}
@@ -273,6 +285,9 @@ export function ChatOnboarding() {
                   : 'bg-accent text-foreground rounded-bl-sm'
               }`}>
                 {m.text}
+                {m.link && (
+                  <a href={m.link.href} className="mt-2 block text-xs font-medium underline underline-offset-2">{m.link.label}</a>
+                )}
               </div>
             </div>
           ))}

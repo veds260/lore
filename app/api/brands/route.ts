@@ -8,6 +8,7 @@ import { setActiveBrandCookie } from '@/lib/active-brand';
 import { PLAN_CONFIG } from '@/lib/plans';
 import { enrichBrand } from '@/lib/enrich-brand';
 import { recordCost } from '@/lib/credits';
+import { xAvailable } from '@/lib/twitterapi';
 import { z } from 'zod';
 
 const CreateBrandSchema = z.object({
@@ -184,9 +185,13 @@ export async function POST(req: NextRequest) {
 
   // Interview-first onboarding: await a fast profile + 10-tweet sync so Q1-Q9
   // can reference real tweets. ~2-3s. Fail-soft if the API hiccups.
-  if (awaitQuickProfile && resolvedHandle) {
+  // Onboarding tells the person what really happened, so it needs to know whether
+  // X lookups are on at all and how many posts came back.
+  const xOn = resolvedHandle ? await xAvailable() : false;
+  let postsPulled = 0;
+  if (awaitQuickProfile && resolvedHandle && xOn) {
     try {
-      await quickSyncBrandTweets(brand.id, resolvedHandle);
+      postsPulled = await quickSyncBrandTweets(brand.id, resolvedHandle);
       // Telemetry: TwitterAPI.io profile + 10 tweets cost
       recordCost(userId, 'brand_profile_sync', { brandId: brand.id, handle: resolvedHandle }).catch(() => {});
     } catch (err) {
@@ -232,5 +237,5 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({ brand }, { status: 201 });
+  return NextResponse.json({ brand, x: { available: xOn, postsPulled } }, { status: 201 });
 }

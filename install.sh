@@ -50,37 +50,90 @@ step "writing .env.local and generating a signing secret"
 npx --yes tsx scripts/predev.ts >/dev/null 2>&1 || true
 
 # The database. Docker is the easy path; a local postgres is fine too.
+LOG="$(pwd)/.install.log"
+: > "$LOG"
 DB_READY=no
+DB_WHY=""
+
+# Prints the end of whatever the last command wrote, so a failure has a reason.
+tail_log() {
+  printf '\n'
+  tail -n "${1:-12}" "$LOG" | sed 's/^/    /'
+  printf '\n'
+}
+
+port_busy() {
+  if command -v nc >/dev/null 2>&1; then
+    nc -z 127.0.0.1 "$1" >/dev/null 2>&1
+  elif command -v lsof >/dev/null 2>&1; then
+    lsof -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+  else
+    return 1
+  fi
+}
+
+DB_NAME="${LORE_DB_NAME:-lore}"
+
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-  step "starting postgres in docker"
-  if docker compose up -d >/dev/null 2>&1; then
-    i=0
-    while [ "$i" -lt 30 ]; do
-      if docker compose exec -T db pg_isready -U postgres -d lore >/dev/null 2>&1; then
-        DB_READY=yes
-        break
-      fi
-      i=$((i + 1))
-      sleep 1
-    done
+  if port_busy 5432; then
+    DB_WHY="Port 5432 is already taken by another program, probably a Postgres you already run, so the Docker database could not start. Stop that program and run docker compose up -d, or point DATABASE_URL in .env.local at an empty database on it."
+  else
+    step "starting postgres in docker"
+    if docker compose up -d >>"$LOG" 2>&1; then
+      i=0
+      while [ "$i" -lt 30 ]; do
+        if docker compose exec -T db pg_isready -U postgres -d lore >/dev/null 2>&1; then
+          DB_READY=yes
+          break
+        fi
+        i=$((i + 1))
+        sleep 1
+      done
+      [ "$DB_READY" = yes ] || DB_WHY="The Docker database started but did not answer within 30 seconds. Run docker compose logs db to see why."
+    else
+      step "docker compose up failed:"
+      tail_log
+      DB_WHY="docker compose up -d failed, see the lines above."
+    fi
   fi
 elif command -v psql >/dev/null 2>&1; then
-  step "using the postgres already running on this machine"
-  createdb lore >/dev/null 2>&1 || true
-  if psql -d lore -c 'select 1' >/dev/null 2>&1; then
-    LOCAL_URL="postgresql://$(whoami)@localhost:5432/lore"
-    if grep -q '^DATABASE_URL=' .env.local 2>/dev/null; then
-      sed -i.bak "s|^DATABASE_URL=.*|DATABASE_URL=${LOCAL_URL}|" .env.local && rm -f .env.local.bak
+  if ! psql -d postgres -c 'select 1' >>"$LOG" 2>&1; then
+    step "found psql, but could not reach a running postgres:"
+    tail_log 4
+    DB_WHY="psql is installed but no Postgres answered. Start it, or install Docker and run docker compose up -d."
+  elif psql -d "$DB_NAME" -c 'select 1' >/dev/null 2>&1 && [ "${LORE_REUSE_DB:-}" != yes ]; then
+    DB_WHY="Your local Postgres already has a database called $DB_NAME, and Lore will not write into a database it did not create. Run the installer again with LORE_DB_NAME=some_new_name, or with LORE_REUSE_DB=yes if that database really is for Lore."
+  else
+    if [ "${LORE_REUSE_DB:-}" = yes ]; then
+      step "using the existing $DB_NAME database on your local postgres, as LORE_REUSE_DB=yes asked"
     else
-      printf 'DATABASE_URL=%s\n' "$LOCAL_URL" >> .env.local
+      step "creating a database called $DB_NAME on the postgres already running here"
+      createdb "$DB_NAME" >>"$LOG" 2>&1 || { tail_log 4; }
     fi
-    DB_READY=yes
+    if psql -d "$DB_NAME" -c 'select 1' >>"$LOG" 2>&1; then
+      LOCAL_URL="postgresql://$(whoami)@localhost:5432/$DB_NAME"
+      if grep -q '^DATABASE_URL=' .env.local 2>/dev/null; then
+        sed -i.bak "s|^DATABASE_URL=.*|DATABASE_URL=${LOCAL_URL}|" .env.local && rm -f .env.local.bak
+      else
+        printf 'DATABASE_URL=%s\n' "$LOCAL_URL" >> .env.local
+      fi
+      DB_READY=yes
+    else
+      DB_WHY="Could not open the $DB_NAME database on your local postgres."
+    fi
   fi
+else
+  DB_WHY="Neither Docker nor Postgres was found on this computer."
 fi
 
 if [ "$DB_READY" = yes ]; then
   step "creating the tables"
-  npm run db:push >/dev/null 2>&1 || DB_READY=no
+  if ! npm run db:push >>"$LOG" 2>&1; then
+    step "creating the tables failed:"
+    tail_log
+    DB_READY=no
+    DB_WHY="npm run db:push failed, see the lines above."
+  fi
 fi
 
 if [ "$DB_READY" = yes ] && [ "${LORE_RELAY:-}" != off ]; then
@@ -90,7 +143,10 @@ fi
 
 if [ "$DB_READY" != yes ]; then
   say "Lore is installed, but it has no database yet."
-  step "Start one, then finish setup:"
+  step "$DB_WHY"
+  step "The full output is in $DIR/.install.log"
+  step ""
+  step "When the database is ready, finish setup:"
   step ""
   step "  cd $DIR"
   step "  docker compose up -d      # or point DATABASE_URL at any postgres"

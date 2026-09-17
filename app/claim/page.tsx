@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 const ERRORS: Record<string, string> = {
   email: 'That email does not look right.',
   password: `Use at least ${MIN_PASSWORD} characters for the password.`,
-  invalid: 'This setup link has expired or was already used. Restart Lore and it opens a fresh one.',
+  invalid: 'This setup link has expired or was already used.',
   failed: 'Could not create the account. Check the database is running and try again.',
 };
 
@@ -32,9 +32,15 @@ export default async function ClaimPage({
       />
 
       {!valid ? (
-        <p className="mt-8 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
-          {ERRORS.invalid}
-        </p>
+        <div className="mt-8">
+          <p className={token ? 'rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2.5 text-sm text-destructive' : 'text-sm text-muted-foreground'}>
+            {token ? ERRORS.invalid : 'Open the setup link printed in the terminal where Lore is running.'}
+          </p>
+          <p className="mt-5 text-sm text-muted-foreground">
+            For a new link, stop Lore with Ctrl+C in that terminal, then start it again from the Lore folder. The link prints as it starts:
+          </p>
+          <pre className="mt-3 rounded-md border border-border bg-card p-3.5 text-[12.5px]">npm run dev</pre>
+        </div>
       ) : (
         <form action="/api/claim" method="post" className="mt-8 space-y-4">
           <input type="hidden" name="token" value={token} />

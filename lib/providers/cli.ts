@@ -19,6 +19,12 @@ interface CliSpec {
   plan: string;
   /** The command that fixes a missing or expired login. */
   login: string;
+  /** argv for the browser sign-in, run by the setup page on a local install. */
+  loginArgs: string[];
+  /** argv that reports whether the CLI is signed in. */
+  statusArgs: string[];
+  /** Commands that install it, most common first. */
+  install: string[];
   /** Builds argv for a single non-interactive completion. `outFile` is a scratch file the CLI may write its answer to. */
   args(outFile: string): string[];
   /** Pull the answer back out, from stdout or the scratch file. */
@@ -30,7 +36,10 @@ const SPECS: Record<CliKind, CliSpec> = {
     bin: 'claude',
     label: 'Claude Code',
     plan: 'your Claude subscription',
-    login: 'claude',
+    login: 'claude auth login',
+    loginArgs: ['auth', 'login', '--claudeai'],
+    statusArgs: ['auth', 'status'],
+    install: ['npm install -g @anthropic-ai/claude-code'],
     // -p prints one response and exits. The prompt goes on stdin, so it can be any
     // length and never has to survive shell quoting.
     // --tools '' is the important part: Lore feeds third-party text (tweets, threads,
@@ -49,6 +58,9 @@ const SPECS: Record<CliKind, CliSpec> = {
     label: 'Codex',
     plan: 'your ChatGPT subscription',
     login: 'codex login',
+    loginArgs: ['login'],
+    statusArgs: ['login', 'status'],
+    install: ['npm install -g @openai/codex', 'brew install codex'],
     // We run from a temp dir, which codex refuses by default as untrusted.
     // read-only sandbox for the same reason claude gets no tools. Codex prints its
     // progress to stdout, so the final answer is read from the -o file instead.
@@ -74,10 +86,170 @@ async function onPath(bin: string): Promise<string | null> {
   return null;
 }
 
-/** Returns the CLIs actually available on this machine, in preference order. */
-export function cliInfo(kind: CliKind): { label: string; plan: string; login: string } {
-  const { label, plan, login } = SPECS[kind];
-  return { label, plan, login };
+
+const SIGNED_OUT = /not logged in|log ?in again|sign(ed)? in again|please (log|sign) ?in|run \/login|unauthori[sz]ed|\b401\b|invalid api key|credential|access token|token (has )?expired|refresh token|could not be refreshed/i;
+
+function looksSignedOut(text: string): boolean {
+  return SIGNED_OUT.test(text);
+}
+
+/**
+ * The most useful line a CLI printed, for showing to the user. Codex logs a lot
+ * of timestamped noise before the real error, so error lines win, then the last line.
+ */
+function cliSaid(text: string): string {
+  const lines = text.split('\n')
+    .map((l) => l.replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s+/, '').replace(/\x1b\[[0-9;]*m/g, '').trim())
+    .filter(Boolean);
+  const errors = lines.filter((l) => /^error\b|error:/i.test(l) && !/rmcp::|mcp/i.test(l));
+  const pick = errors.at(-1) ?? lines.at(-1) ?? '';
+  return pick.replace(/^ERROR:?\s*/i, '').replace(/^[\w:]+:\s(?=[A-Z])/, '').slice(0, 240);
+}
+
+// Shared across route bundles in the same process, so a failed generation on one
+// page shows up as signed out on the setup page.
+type AuthMemo = Partial<Record<CliKind, { at: number; said: string }>>;
+const g = globalThis as typeof globalThis & { __loreCliAuth?: AuthMemo; __loreCliLogin?: Partial<Record<CliKind, LoginRun>> };
+const authFailures: AuthMemo = (g.__loreCliAuth ??= {});
+
+function noteAuthFailure(kind: CliKind, said: string) {
+  authFailures[kind] = { at: Date.now(), said };
+}
+
+function clearAuthFailure(kind: CliKind) {
+  delete authFailures[kind];
+}
+
+/** "Check again" on setup: the person may have signed in from a terminal since the last failure. */
+export function forgetAuthFailures() {
+  delete authFailures.claude;
+  delete authFailures.codex;
+}
+
+function runQuiet(bin: string, args: string[], timeoutMs: number, env: NodeJS.ProcessEnv = childEnv()): Promise<{ code: number | null; out: string }> {
+  return new Promise((resolve) => {
+    let out = '';
+    let child;
+    try {
+      child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd: tmpdir(), env });
+    } catch (err) {
+      resolve({ code: null, out: err instanceof Error ? err.message : String(err) });
+      return;
+    }
+    const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
+    child.stdout.on('data', (d) => { out += d.toString(); });
+    child.stderr.on('data', (d) => { out += d.toString(); });
+    child.on('error', (err) => { clearTimeout(timer); resolve({ code: null, out: err.message }); });
+    child.on('close', (code) => { clearTimeout(timer); resolve({ code, out }); });
+  });
+}
+
+export interface CliStatus {
+  installed: boolean;
+  /** null when the CLI answered in a way we could not read. */
+  signedIn: boolean | null;
+  /** How it is signed in, in plain words: "Claude Max subscription", "ChatGPT". */
+  account?: string;
+  /** What the CLI itself said when it is not signed in or could not be checked. */
+  said?: string;
+}
+
+/** Installed and signed in are different things. This asks the CLI for both. */
+export async function cliStatus(kind: CliKind): Promise<CliStatus> {
+  const spec = SPECS[kind];
+  if (!(await onPath(spec.bin))) return { installed: false, signedIn: false };
+
+  const { code, out } = await runQuiet(spec.bin, spec.statusArgs, 20_000);
+  let status: CliStatus;
+
+  if (kind === 'claude') {
+    const json = out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1);
+    try {
+      const parsed = JSON.parse(json) as { loggedIn?: boolean; authMethod?: string; subscriptionType?: string };
+      const plan = parsed.subscriptionType ? `Claude ${parsed.subscriptionType[0].toUpperCase()}${parsed.subscriptionType.slice(1)}` : 'Claude';
+      status = parsed.loggedIn
+        ? { installed: true, signedIn: true, account: parsed.authMethod === 'claude.ai' ? `${plan} subscription` : parsed.authMethod === 'console' ? 'Anthropic Console, billed per use' : parsed.authMethod || 'signed in' }
+        : { installed: true, signedIn: false, said: 'Not logged in' };
+    } catch {
+      status = { installed: true, signedIn: null, said: cliSaid(out) || `exit code ${code}` };
+    }
+  } else {
+    const m = out.match(/Logged in using (.+)/i);
+    if (m) status = { installed: true, signedIn: true, account: m[1].trim() };
+    else if (/not logged in/i.test(out)) status = { installed: true, signedIn: false, said: 'Not logged in' };
+    else status = { installed: true, signedIn: null, said: cliSaid(out) || `exit code ${code}` };
+  }
+
+  // A status check only reads the saved login. Codex can report "Logged in" with a
+  // refresh token the server already rejected, which only shows up on a real call.
+  const failed = authFailures[kind];
+  if (status.signedIn && failed) return { ...status, signedIn: false, said: failed.said || 'The saved sign-in stopped working' };
+  return status;
+}
+
+export interface LoginRun {
+  kind: CliKind;
+  startedAt: number;
+  done: boolean;
+  code: number | null;
+  /** A sign-in link the CLI printed, for when no browser opened. */
+  url?: string;
+  said?: string;
+  child?: ReturnType<typeof spawn>;
+}
+
+const logins: Partial<Record<CliKind, LoginRun>> = (g.__loreCliLogin ??= {});
+const LOGIN_MAX_MS = 10 * 60_000;
+
+export function loginState(kind: CliKind): Omit<LoginRun, 'child'> | null {
+  const run = logins[kind];
+  if (!run) return null;
+  return { kind: run.kind, startedAt: run.startedAt, done: run.done, code: run.code, url: run.url, said: run.said };
+}
+
+/**
+ * Runs the CLI's own browser sign-in on this machine. Only for a local install,
+ * where the person at the setup page is also the person at this computer.
+ */
+export async function startCliLogin(kind: CliKind): Promise<Omit<LoginRun, 'child'>> {
+  const existing = logins[kind];
+  if (existing && !existing.done && Date.now() - existing.startedAt < LOGIN_MAX_MS) return loginState(kind)!;
+
+  const spec = SPECS[kind];
+  if (!(await onPath(spec.bin))) throw new ProviderError(`${spec.label} is not installed. Install it with \`${spec.install[0]}\` first.`, 'cli', true);
+
+  // The sign-in opens a browser, which needs the display variables the model runs never get.
+  const env = childEnv();
+  for (const k of ['DISPLAY', 'WAYLAND_DISPLAY', 'BROWSER', 'DBUS_SESSION_BUS_ADDRESS', 'XDG_RUNTIME_DIR']) {
+    if (process.env[k] !== undefined) env[k] = process.env[k];
+  }
+
+  const run: LoginRun = { kind, startedAt: Date.now(), done: false, code: null };
+  let out = '';
+  const child = spawn(/*turbopackIgnore: true*/ spec.bin, spec.loginArgs, { stdio: ['pipe', 'pipe', 'pipe'], cwd: tmpdir(), env });
+  run.child = child;
+  const onData = (d: Buffer) => {
+    out += d.toString();
+    run.url ??= out.match(/https:\/\/\S+/)?.[0]?.replace(/[)\].,]+$/, '');
+  };
+  child.stdout.on('data', onData);
+  child.stderr.on('data', onData);
+  const timer = setTimeout(() => child.kill('SIGTERM'), LOGIN_MAX_MS);
+  child.on('error', (err) => { run.done = true; run.said = err.message; clearTimeout(timer); });
+  child.on('close', (code) => {
+    run.done = true;
+    run.code = code;
+    clearTimeout(timer);
+    if (code === 0) clearAuthFailure(kind);
+    else run.said = cliSaid(out) || `exit code ${code}`;
+  });
+  logins[kind] = run;
+  return loginState(kind)!;
+}
+
+export function cliInfo(kind: CliKind): { label: string; plan: string; login: string; install: string[] } {
+  const { label, plan, login, install } = SPECS[kind];
+  return { label, plan, login, install };
 }
 
 export async function detectClis(): Promise<CliKind[]> {
@@ -165,10 +337,11 @@ function run(spec: CliSpec, args: string[], input: string, timeoutMs: number): P
       // can fix it in one command, so name it instead of surfacing an exit code.
       // Checked even on exit 0: some CLIs print an auth error and still exit clean.
       const blob = `${stderr}\n${code === 0 ? '' : stdout}`;
-      const looksUnauthed = /not logged in|log ?in again|sign in again|please (log|sign) ?in|unauthori[sz]ed|401|invalid api key|credential|access token|token (has )?expired|refresh token/i.test(blob);
-      if (looksUnauthed && (code !== 0 || !stdout.trim())) {
+      const said = cliSaid(blob);
+      if (looksSignedOut(blob) && (code !== 0 || !stdout.trim())) {
+        noteAuthFailure(spec.bin as CliKind, said);
         reject(new ProviderError(
-          `${spec.label} is installed but not signed in. Run \`${spec.login}\` in a terminal, sign in, then try again.`,
+          `${spec.label} is not signed in${said ? ` (it said: ${said.replace(/[.\s]+$/, '')})` : ''}. Sign in again from the setup page, or run \`${spec.login}\` in a terminal.`,
           'cli',
           true,
         ));
@@ -184,11 +357,12 @@ function run(spec: CliSpec, args: string[], input: string, timeoutMs: number): P
         return;
       }
       if (code === 0) {
+        clearAuthFailure(spec.bin as CliKind);
         resolve(stdout);
         return;
       }
       reject(new ProviderError(
-        `${spec.label} stopped with an error: ${(stderr.trim() || stdout.trim()).split('\n').slice(-3).join(' ').slice(0, 300)}`,
+        `${spec.label} stopped with an error: ${said || `exit code ${code}`}`,
         'cli',
       ));
     });

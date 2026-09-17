@@ -62,15 +62,19 @@ Only two things are required.
 
 | | Agent CLI | API key |
 |---|---|---|
-| Setup | install Claude Code (Claude plan) or Codex (ChatGPT plan), sign in once | paste a key in `.env.local` |
-| Cost | included in your subscription | per token |
+| Setup | install Claude Code (Claude plan) or Codex (ChatGPT plan) and sign in | paste a key on the setup page |
+| Cost | included in your subscription | per use, billed by the provider |
 | Images | no | yes |
 | Speed | slower, it spawns a process | faster |
 
-The setup page finds what is installed, lets you pick Claude or ChatGPT, and sends a
-test message so you know it answers before you start. Posts generated this way have no
-limits from Lore, only whatever your own plan allows. Set `LORE_PROVIDER` to `claude`,
-`codex` or `api` to pin a choice in `.env.local` instead.
+The setup page checks whether Claude Code and Codex are installed and signed in. If
+one is installed but signed out, the Sign in button opens the normal Claude or ChatGPT
+login in your browser. If neither is installed, it shows the one command to install
+it. An Anthropic, OpenAI or OpenRouter key pasted there is tested with a real call and
+saved to `.env.local` only if it works. Whatever you pick gets a short test message
+before you can move on. Posts generated this way have no limits from Lore, only
+whatever your own plan allows. Set `LORE_PROVIDER` to `claude`, `codex` or `api` to
+pin a choice in `.env.local` instead.
 
 Everything else is optional and degrades quietly when it is absent: Telegram, X
 lookups, voice interviews, outgoing webhooks. The setup page lists what each one
@@ -83,17 +87,21 @@ Groq. So you can try them first, the maintainer runs a small relay that makes th
 calls for each install on a limited number of free credits. Credits follow what a
 call really costs, so a long voice clip uses more than a profile lookup, and the keys
 themselves never leave the relay.
-The installer connects you automatically. The 200 starter credits unlock on the setup
-page once you star this repo and follow [@vedsayys](https://x.com/vedsayys) on X. GitHub
-sign-in confirms the star, and a short code in your X bio or a post confirms the X
-account is yours. Each account unlocks free credits once, so a reinstall carries over
-what was left rather than starting again.
+The installer connects your install to the relay, unless you run it with
+`LORE_RELAY=off`, and its credits start locked. To unlock the 200 starter credits, open Shared
+relay under Extras on the setup page, follow [@vedsayys](https://x.com/vedsayys) on X
+and put the short code it gives you in your X bio or a post, so the relay knows the
+account is yours. The page may also ask you to star this repo and confirm it through
+GitHub sign-in. The X account needs to be at least 30 days old with 10 followers and
+10 posts. Each account unlocks free credits once, so a reinstall carries over what
+was left rather than starting again.
 
 Your own key always wins. Set `TWITTERAPI_IO_KEY`, `FISH_AUDIO_API_KEY` or
 `GROQ_API_KEY` and that feature stops using the relay. The relay only ever sees X
 handles and search queries, the text being spoken, your voice answers while they are
 transcribed, and your install's relay key. It never sees drafts,
-your database or model prompts. Set `LORE_RELAY=off` to switch it off completely.
+your database or model prompts. Set `LORE_RELAY=off` in `.env.local` to switch it off
+completely, and remove that line and restart Lore to turn it back on.
 
 ## Drive it from Claude
 
@@ -137,6 +145,10 @@ want the scheduled jobs, and `AGENT_ENABLED=true` only when you actually want th
 background agent spending model calls.
 
 The `/setup` page stops being public the moment the instance has an owner.
+
+`npm run dev` only listens on this computer (127.0.0.1), so nobody else on your
+network can reach a fresh install before you claim it. Start it with
+`LORE_HOST=0.0.0.0 npm run dev` if you do want it reachable from other devices.
 
 ## Layout
 

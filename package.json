@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "tsx scripts/predev.ts && next dev",
+    "dev": "tsx scripts/predev.ts --dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

@@ -9,7 +9,12 @@ export async function register() {
     const token = await issueClaimToken();
     if (!token) return;
 
-    const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || `http://localhost:${process.env.PORT || 3000}`;
+    // Next sets PORT to the port it really bound, including when it moved off a busy
+    // one, so a local link always matches. A deployed server has a public address
+    // configured, and nobody can open localhost on it anyway.
+    const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '');
+    const local = !configured || /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(configured);
+    const base = local ? `http://localhost:${process.env.PORT || 3000}` : configured;
     const url = `${base}/claim?token=${token}`;
     console.log(
       `\n  Lore is running and nobody owns it yet.\n  Your browser should open to finish setup. If it does not, open:\n\n  ${url}\n\n  The link works until someone uses it, and a restart issues a new one.\n`,

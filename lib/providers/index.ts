@@ -1,4 +1,5 @@
-import { cliInfo, createCliProvider, detectClis, type CliKind } from './cli';
+import { createHash } from 'node:crypto';
+import { cliInfo, cliStatus, createCliProvider, detectClis, loginState, type CliKind, type CliStatus, type LoginRun } from './cli';
 import { createHttpProvider, type Backend } from './http';
 import type { GenerateOptions, Provider } from './types';
 import { ProviderError } from './types';
@@ -57,60 +58,189 @@ export async function saveBackendChoice(choice: BackendChoice): Promise<void> {
   resetProviderCache();
 }
 
+export type KeyBackend = Backend;
+
 export interface BackendOption {
   id: BackendChoice;
   label: string;
   /** What it bills against, in plain words. */
   plan: string;
+  /** Ready to pick: installed and signed in for a CLI, a key set for the API. */
   available: boolean;
-  /** How to make it available when it is not. */
-  howTo: string;
+  installed: boolean;
+  signedIn: boolean | null;
+  /** How the CLI is signed in, or which key is set. */
+  account?: string;
+  /** What the CLI said when it is not signed in. */
+  said?: string;
+  /** Install commands, when it is not installed. */
+  install?: string[];
+  /** Terminal command that signs in, for when the button is not offered. */
+  login?: string;
+  loginRun?: Omit<LoginRun, 'child'> | null;
+}
+
+function cliOption(kind: CliKind, status: CliStatus): BackendOption {
+  const info = cliInfo(kind);
+  return {
+    id: kind,
+    label: kind === 'claude' ? 'Claude' : 'ChatGPT',
+    plan: kind === 'claude' ? 'Runs on your Claude Pro or Max plan through Claude Code' : 'Runs on your ChatGPT Plus or Pro plan through Codex',
+    available: status.installed && status.signedIn !== false,
+    installed: status.installed,
+    signedIn: status.signedIn,
+    account: status.account,
+    said: status.said,
+    install: status.installed ? undefined : info.install,
+    login: info.login,
+    loginRun: loginState(kind),
+  };
 }
 
 export async function backendOptions(): Promise<{ options: BackendOption[]; active: BackendChoice | null; pinned: boolean }> {
-  const clis = await detectClis();
+  const [claude, codex] = await Promise.all([cliStatus('claude'), cliStatus('codex')]);
   const keyed = keyBackend();
-  const claude = cliInfo('claude');
   const options: BackendOption[] = [
+    cliOption('claude', claude),
+    cliOption('codex', codex),
     {
-      id: 'claude', label: claude.label, plan: 'Uses your Claude Pro or Max subscription', available: clis.includes('claude'),
-      howTo: 'Install Claude Code with `npm install -g @anthropic-ai/claude-code`, run `claude` once and sign in',
-    },
-    {
-      id: 'codex', label: 'ChatGPT (Codex)', plan: 'Uses your ChatGPT Plus or Pro subscription', available: clis.includes('codex'),
-      howTo: 'Install Codex with `npm install -g @openai/codex`, then run `codex login`',
-    },
-    {
-      id: 'api', label: 'API key', plan: keyed ? `Pay per use with your ${keyed.backend} key` : 'Pay per use with an API key', available: Boolean(keyed),
-      howTo: 'Put ANTHROPIC_API_KEY, OPENAI_API_KEY or OPENROUTER_API_KEY in .env.local and restart',
+      id: 'api', label: 'API key', plan: 'Billed per use by Anthropic, OpenAI or OpenRouter', available: Boolean(keyed),
+      installed: Boolean(keyed), signedIn: Boolean(keyed),
+      account: keyed ? `${KEY_NAMES[keyed.backend]} key ending ${keyed.key.slice(-4)}` : undefined,
     },
   ];
   let active: BackendChoice | null = null;
   try {
-    const p = await resolveProvider();
-    active = p.id === 'http' ? 'api' : p.label.includes('(codex)') ? 'codex' : 'claude';
+    active = choiceOf(await resolveProvider());
   } catch {
     active = null;
   }
   return { options, active, pinned: Boolean(asChoice(process.env.LORE_PROVIDER) || process.env.LORE_PROVIDER?.trim().toLowerCase() === 'cli') };
 }
 
-/** Sends one tiny prompt through the active backend, so setup can prove it really answers. */
-export async function testModel(): Promise<{ ok: true; provider: string; ms: number } | { ok: false; provider: string | null; error: string }> {
+const KEY_NAMES: Record<Backend, string> = { anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter' };
+const KEY_ENV: Record<Backend, string> = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', openrouter: 'OPENROUTER_API_KEY' };
+
+function choiceOf(p: Provider): BackendChoice {
+  return p.id === 'http' ? 'api' : p.label.includes('(codex)') ? 'codex' : 'claude';
+}
+
+/**
+ * What a passing test proved. A CLI is identified by name, a key by a hash of the
+ * key itself, so swapping in a different key needs a fresh test.
+ */
+function fingerprint(p: Provider): string {
+  const choice = choiceOf(p);
+  if (choice !== 'api') return choice;
+  const keyed = keyBackend();
+  return keyed ? `api:${keyed.backend}:${createHash('sha256').update(keyed.key).digest('hex').slice(0, 16)}` : 'api';
+}
+
+const VERIFIED_SETTING = 'model_verified';
+
+async function readVerified(): Promise<string | null> {
+  try {
+    const { db } = await import('@/lib/db');
+    const { instanceSettings } = await import('@/lib/db/schema');
+    const { eq } = await import('drizzle-orm');
+    const [row] = await db.select({ value: instanceSettings.value }).from(instanceSettings).where(eq(instanceSettings.key, VERIFIED_SETTING)).limit(1);
+    return row?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeVerified(value: string | null): Promise<void> {
+  const { db } = await import('@/lib/db');
+  const { instanceSettings } = await import('@/lib/db/schema');
+  const { eq } = await import('drizzle-orm');
+  if (value === null) {
+    await db.delete(instanceSettings).where(eq(instanceSettings.key, VERIFIED_SETTING));
+    return;
+  }
+  const now = new Date();
+  await db.insert(instanceSettings).values({ key: VERIFIED_SETTING, value, updatedAt: now })
+    .onConflictDoUpdate({ target: instanceSettings.key, set: { value, updatedAt: now } });
+}
+
+export async function clearModelVerified(): Promise<void> {
+  await writeVerified(null);
+}
+
+/**
+ * The one gate for "Lore has a model that really answered". True only when the
+ * backend in use right now is the one that last passed a live test on setup.
+ */
+export async function modelReady(): Promise<boolean> {
   let provider: Provider;
   try {
     provider = await resolveProvider();
+  } catch {
+    return false;
+  }
+  return (await readVerified()) === fingerprint(provider);
+}
+
+/** Sends one tiny prompt through the active backend, so setup can prove it really answers. */
+export async function testModel(): Promise<{ ok: true; provider: string; ms: number; reply: string } | { ok: false; provider: string | null; error: string }> {
+  let provider: Provider;
+  try {
+    resetProviderCache();
+    provider = await resolveProvider();
   } catch (err) {
+    await writeVerified(null).catch(() => {});
     return { ok: false, provider: null, error: err instanceof Error ? err.message : String(err) };
   }
   const started = Date.now();
   try {
-    const out = await provider.generate({ role: 'extract', prompt: 'Reply with the single word READY.', maxTokens: 10, timeoutMs: 90_000 });
+    const out = await provider.generate({ role: 'extract', prompt: 'Reply with the single word READY and nothing else.', maxTokens: 10, timeoutMs: 90_000 });
     if (!out.trim()) throw new ProviderError('The model returned nothing', provider.id);
-    return { ok: true, provider: provider.label, ms: Date.now() - started };
+    await writeVerified(fingerprint(provider));
+    return { ok: true, provider: provider.label, ms: Date.now() - started, reply: out.trim().slice(0, 40) };
   } catch (err) {
+    await writeVerified(null).catch(() => {});
     return { ok: false, provider: provider.label, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/** Only letters, digits and the few symbols real keys use, so nothing can break out of the env file line. */
+const KEY_SHAPE = /^[A-Za-z0-9_\-.]{20,300}$/;
+
+/**
+ * Checks a pasted key with a real call first, and only keeps it when the provider
+ * accepts it. A rejected key is never written anywhere.
+ */
+export async function saveApiKey(backend: Backend, key: string): Promise<{ ok: true; ms: number } | { ok: false; error: string }> {
+  const clean = key.trim();
+  if (!KEY_SHAPE.test(clean)) return { ok: false, error: 'That does not look like an API key. Copy the whole key and paste it again' };
+
+  const started = Date.now();
+  try {
+    const out = await createHttpProvider(backend, clean).generate({ role: 'extract', prompt: 'Reply with the single word READY and nothing else.', maxTokens: 10, timeoutMs: 45_000 });
+    if (!out.trim()) return { ok: false, error: `${KEY_NAMES[backend]} answered with nothing. Try again` };
+  } catch (err) {
+    if (err instanceof ProviderError && err.userActionable) {
+      return { ok: false, error: `${KEY_NAMES[backend]} did not accept that key (${err.message.match(/\((\d{3})\)/)?.[1] ?? 'rejected'}). Check you copied all of it and that the account has billing set up` };
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `Could not check the key with ${KEY_NAMES[backend]}: ${msg}` };
+  }
+
+  const { writeEnvLocal } = await import('@/lib/setup/env-file');
+  const updates: Record<string, string | null> = { [KEY_ENV[backend]]: clean };
+  // Lore picks the first key it finds, so a new key replaces the other providers' keys.
+  for (const other of Object.keys(KEY_ENV) as Backend[]) {
+    if (other !== backend) updates[KEY_ENV[other]] = null;
+  }
+  await writeEnvLocal(updates);
+  for (const [k, v] of Object.entries(updates)) {
+    if (v === null) delete process.env[k];
+    else process.env[k] = v;
+  }
+  await saveBackendChoice('api');
+  const provider = await resolveProvider();
+  await writeVerified(fingerprint(provider));
+  return { ok: true, ms: Date.now() - started };
 }
 
 let cached: Provider | null = null;
@@ -176,7 +306,7 @@ export async function resolveProvider(): Promise<Provider> {
   }
 
   throw new ProviderError(
-    'No model backend available. Either install Claude Code (`claude`) and sign in, or set ANTHROPIC_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY.',
+    'No model is set up yet. Sign in to Claude Code or Codex, or add an API key, on the setup page at /setup.',
     'none',
     true,
   );

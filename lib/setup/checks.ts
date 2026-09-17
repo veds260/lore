@@ -30,6 +30,8 @@ export interface Capability {
 
 const env = (k: string) => process.env[k]?.trim() || undefined;
 
+const RELAY_OFF_NOTE = 'The shared relay with free credits is off (LORE_RELAY=off). Remove that setting and restart Lore to use it instead of keys.';
+
 async function checkModel(): Promise<Capability> {
   resetProviderCache();
   const s = await describeSetup();
@@ -41,11 +43,12 @@ async function checkModel(): Promise<Capability> {
     status: s.ready ? 'ok' : 'missing',
     detail: s.ready ? `${s.provider}${s.vision ? ', images on' : ', images off'}` : undefined,
     fix: s.ready ? undefined : [
-      'Option A, free with a subscription you may already have:',
-      '  1. Install Claude Code, then run `claude` once and sign in.',
-      '  2. Re-run this check. Lore will find it on PATH.',
-      'Option B, pay per token:',
-      '  1. Put ANTHROPIC_API_KEY (or OPENAI_API_KEY / OPENROUTER_API_KEY) in .env.local',
+      'Option A, runs on a Claude or ChatGPT plan you already pay for:',
+      '  Claude: `npm install -g @anthropic-ai/claude-code`, then `claude auth login`',
+      '  ChatGPT: `npm install -g @openai/codex` (or `brew install codex`), then `codex login`',
+      '  Then pick it on the setup page at /setup, or re-run this check.',
+      'Option B, pay per use with an API key:',
+      '  Paste it on the setup page, or put ANTHROPIC_API_KEY (or OPENAI_API_KEY / OPENROUTER_API_KEY) in .env.local',
     ],
   };
 }
@@ -60,9 +63,10 @@ async function checkDatabase(): Promise<Capability> {
       unlocks: 'Your drafts, voice profile and history. Without it nothing persists.',
       status: 'missing',
       fix: [
-        '1. Start a local Postgres: `docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=lore --name lore-db postgres:16`',
-        '2. Put this in .env.local: DATABASE_URL=postgresql://postgres:lore@localhost:5432/postgres',
+        '1. Start the Postgres that ships with Lore, from the Lore folder: `docker compose up -d`',
+        '2. Put this in .env.local: DATABASE_URL=postgresql://postgres:lore@localhost:5432/lore',
         '3. Create the tables: `npm run db:push`',
+        'Already have Postgres? Point DATABASE_URL at an empty database on it instead.',
       ],
     };
   }
@@ -90,8 +94,9 @@ async function checkDatabase(): Promise<Capability> {
       status: 'broken',
       fix: [
         `Could not connect: ${err instanceof Error ? err.message.slice(0, 160) : String(err)}`,
-        '1. Check the database is running and DATABASE_URL is right.',
-        '2. If the tables are missing, run `npm run db:push`.',
+        '1. Start the database. With Docker, run `docker compose up -d` in the Lore folder.',
+        '2. Check DATABASE_URL in .env.local. The Docker one is postgresql://postgres:lore@localhost:5432/lore',
+        '3. If the tables are missing, run `npm run db:push`.',
       ],
     };
   }
@@ -151,9 +156,14 @@ async function checkVoice(): Promise<Capability> {
     unlocks: 'Lore interviews you out loud instead of by typing, which gets better material faster.',
     status: ready ? 'ok' : 'missing',
     detail,
-    fix: ready ? undefined : [
+    fix: ready ? undefined : relayTurnedOff() ? [
+      'Add your own keys to .env.local and restart Lore:',
+      '  FISH_AUDIO_API_KEY from fish.audio',
+      '  GROQ_API_KEY from console.groq.com (free tier)',
+      RELAY_OFF_NOTE,
+    ] : [
       'Either works:',
-      '  A. Free starter credits on the shared relay: run `npm run relay:connect`, or use the Connect button on this page.',
+      '  A. Free starter credits on the shared relay: open Shared relay under Extras on the setup page.',
       '  B. Your own keys: FISH_AUDIO_API_KEY (fish.audio) and GROQ_API_KEY (console.groq.com, free tier) in .env.local',
     ],
   };
@@ -166,7 +176,17 @@ async function checkRelay(): Promise<Capability> {
     required: false,
     unlocks: 'X lookups and voice interviews without your own API keys, on 200 free credits you unlock in a couple of clicks.',
   };
-  if (relayTurnedOff()) return { ...base, status: 'missing', detail: 'turned off with LORE_RELAY=off' };
+  if (relayTurnedOff()) {
+    return {
+      ...base,
+      status: 'missing',
+      detail: 'turned off with LORE_RELAY=off',
+      fix: [
+        'To turn it on, remove LORE_RELAY=off from .env.local, or from the command you start Lore with.',
+        'Restart Lore, then come back here to unlock the free credits.',
+      ],
+    };
+  }
 
   const key = await getRelayKey();
   if (!key) {
@@ -242,8 +262,8 @@ async function checkTwitter(): Promise<Capability> {
     detail: key ? 'your own key' : relay ? 'through the shared relay, limited credits' : undefined,
     fix: key || relay ? undefined : [
       '1. Get a key at twitterapi.io/dashboard',
-      '2. Set TWITTERAPI_IO_KEY in .env.local',
-      'Or skip the key and use free starter credits: run `npm run relay:connect`.',
+      '2. Set TWITTERAPI_IO_KEY in .env.local and restart Lore',
+      relayTurnedOff() ? RELAY_OFF_NOTE : 'Or skip the key and use free starter credits: open Shared relay under Extras on the setup page.',
     ],
   };
 }

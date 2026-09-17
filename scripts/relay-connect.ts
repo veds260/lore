@@ -12,7 +12,7 @@ async function main() {
   const { connectRelay, relayBalance, relayTurnedOff } = await import('../lib/relay/client');
 
   if (relayTurnedOff()) {
-    console.log('The shared relay is turned off with LORE_RELAY=off, so there is nothing to connect.');
+    console.log('The shared relay is turned off with LORE_RELAY=off, so there is nothing to connect.\nTo turn it on, remove LORE_RELAY=off from .env.local or your shell, then run npm run relay:connect again.');
     return;
   }
 

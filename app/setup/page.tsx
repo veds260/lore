@@ -5,6 +5,8 @@ import { relayTurnedOff } from '@/lib/relay/client';
 import { RelayUnlock } from '@/components/setup/relay-unlock';
 import { SetupShell, StepHeading } from '@/components/setup/setup-shell';
 import { ModelPicker } from '@/components/setup/model-picker';
+import { isHosted } from '@/lib/plans';
+import { modelReady } from '@/lib/providers';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +30,7 @@ const WORD: Record<Capability['status'], string> = {
 function Fix({ cap }: { cap: Capability }) {
   return (
     <>
-      {cap.fix && cap.id !== 'relay' && (
+      {cap.fix && (cap.id !== 'relay' || relayTurnedOff()) && (
         <pre className="mt-4 max-h-[240px] overflow-auto rounded-md border border-border bg-card p-3.5 text-[12px] leading-relaxed text-foreground/85 whitespace-pre-wrap">
 {cap.fix.join('\n')}
         </pre>
@@ -59,7 +61,7 @@ function ModelStep({ required }: { required: Capability[] }) {
       <StepHeading
         eyebrow="Step 2 of 4"
         title="Connect a model"
-        sub="Lore writes with an AI you already pay for, so there is nothing extra to buy"
+        sub="Sign in with your Claude or ChatGPT plan, or paste an API key"
       />
       <ModelPicker />
     </>
@@ -150,6 +152,19 @@ export default async function SetupPage({
       </main>
     );
   }
+  if (access === 'open') {
+    return (
+      <SetupShell current={0}>
+        <StepHeading
+          eyebrow="Step 1 of 4"
+          title="Make this Lore yours"
+          sub="Open the setup link printed in the terminal where Lore is running. It creates your account and brings you back here"
+        />
+        <p className="mt-6 text-sm text-muted-foreground">Lost the link? Stop Lore with Ctrl+C in that terminal and start it again, and it prints a new one:</p>
+        <pre className="mt-3 rounded-md border border-border bg-card p-3.5 text-[12.5px]">npm run dev</pre>
+      </SetupShell>
+    );
+  }
   if (access === 'denied') {
     return (
       <main className="min-h-screen grid place-items-center px-6">
@@ -171,7 +186,10 @@ export default async function SetupPage({
   const ready = canRun(caps);
   const required = caps.filter((c) => c.required);
   const optional = caps.filter((c) => !c.required);
-  const showExtras = ready && step === 'extras';
+  // Extras only open once a model has really answered a test message, the same
+  // gate onboarding uses. The hosted service runs on keys the host set up.
+  const modelOk = ready && (isHosted() || (await modelReady()));
+  const showExtras = modelOk && step === 'extras';
 
   return (
     <SetupShell current={showExtras ? 2 : 1}>
