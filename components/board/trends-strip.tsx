@@ -7,25 +7,38 @@ import type { Trend } from '@/app/api/trends/route';
 import type { Profile } from '@/components/ui/platform-mockups';
 
 // Maps full angle prompt → a short display label
-const ANGLE_LABEL_MAP: [string, string, string][] = [
-  ['qrt',           'QRT',          'bg-purple-500/10 text-purple-400'],
-  ['contrarian', 'Contrarian', 'bg-rose-500/10 text-rose-500'],
-  ['hot take',   'Hot take',   'bg-rose-500/10 text-rose-500'],
-  ['personal story', 'Personal story', 'bg-violet-500/10 text-violet-400'],
-  ['share a personal', 'Personal story', 'bg-violet-500/10 text-violet-400'],
-  ['break down the data', 'Data breakdown', 'bg-sky-500/10 text-sky-400'],
-  ['data breakdown', 'Data breakdown', 'bg-sky-500/10 text-sky-400'],
-  ['tactical breakdown', 'Tactical', 'bg-emerald-500/10 text-emerald-400'],
-  ['share a tactical', 'Tactical', 'bg-emerald-500/10 text-emerald-400'],
-  ['share a specific', 'Case study', 'bg-sky-500/10 text-sky-400'],
+interface CardTone { bg: string; ink: string; emoji: string }
+
+const TONE = {
+  qrt:      { bg: '#EFE9FF', ink: '#6D28D9', emoji: '🔁' },
+  spicy:    { bg: '#FFE8EC', ink: '#BE123C', emoji: '🌶️' },
+  story:    { bg: '#FFF1DE', ink: '#B45309', emoji: '📖' },
+  data:     { bg: '#E3F2FF', ink: '#0369A1', emoji: '📊' },
+  tactical: { bg: '#E3F8EC', ink: '#047857', emoji: '🛠️' },
+  news:     { bg: '#E8EEFF', ink: '#1D4ED8', emoji: '📰' },
+  idea:     { bg: '#FFF6CC', ink: '#A16207', emoji: '✨' },
+} satisfies Record<string, CardTone>;
+
+// Maps full angle prompt → a short display label and its card colour
+const ANGLE_LABEL_MAP: [string, string, CardTone][] = [
+  ['qrt',                 'Quote tweet',    TONE.qrt],
+  ['contrarian',          'Contrarian',     TONE.spicy],
+  ['hot take',            'Hot take',       TONE.spicy],
+  ['personal story',      'Personal story', TONE.story],
+  ['share a personal',    'Personal story', TONE.story],
+  ['break down the data', 'Data breakdown', TONE.data],
+  ['data breakdown',      'Data breakdown', TONE.data],
+  ['tactical breakdown',  'Tactical',       TONE.tactical],
+  ['share a tactical',    'Tactical',       TONE.tactical],
+  ['share a specific',    'Case study',     TONE.data],
 ];
 
-function angleInfo(angle: string): { label: string; cls: string } {
+function angleInfo(angle: string, type?: string): { label: string; tone: CardTone } {
+  if (type === 'qrt') return { label: 'Quote tweet', tone: TONE.qrt };
+  if (type === 'mainstream') return { label: 'News', tone: TONE.news };
   const lower = angle.toLowerCase();
   const match = ANGLE_LABEL_MAP.find(([key]) => lower.includes(key));
-  return match
-    ? { label: match[1], cls: match[2] }
-    : { label: 'Idea', cls: 'bg-amber-500/10 text-amber-500' };
+  return match ? { label: match[1], tone: match[2] } : { label: 'Idea', tone: TONE.idea };
 }
 
 interface GeneratedPosts { twitter: string; linkedin: string }
@@ -161,7 +174,7 @@ function TrendCard({
   const [saved, setSaved] = useState(false);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const attemptRef = useRef(0);
-  const { label, cls } = angleInfo(trend.angle);
+  const { label, tone } = angleInfo(trend.angle, trend.type);
 
   const REGEN_HINTS = [
     'Write from a completely different angle: different hook style, different structure, different perspective on this topic.',
@@ -197,7 +210,8 @@ function TrendCard({
       : `${trend.headline}\n\nContext: ${trend.context}\nContent angle: ${trend.angle}${variationNote}`;
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 35_000);
+    // Generous, because a CLI model on the user's own subscription can take 30s or more.
+    const timer = setTimeout(() => controller.abort(), 150_000);
 
     try {
       const res = await fetch('/api/generate', {
@@ -280,41 +294,42 @@ function TrendCard({
       )}
 
       <div
-        className={`flex flex-col shrink-0 w-44 rounded-lg border transition-colors cursor-default ${
-          state === 'done'
-            ? 'border-amber-500/30 bg-amber-500/[0.06]'
-            : 'border-border bg-card hover:border-amber-500/25'
+        className={`flex flex-col shrink-0 w-64 rounded-2xl transition-transform cursor-default hover:-translate-y-0.5 ${
+          state === 'done' ? 'ring-2' : ''
         }`}
+        style={{ backgroundColor: tone.bg, ...(state === 'done' ? { boxShadow: `0 0 0 2px ${tone.ink}` } : {}) }}
       >
-        <div className="p-2.5 flex flex-col gap-1.5">
-          <div className="flex items-center gap-1 flex-wrap">
-            <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${cls}`}>
-              {trend.type === 'mainstream' ? 'News · LinkedIn' : label}
+        <div className="p-4 flex flex-1 flex-col gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[15px] leading-none" aria-hidden>{tone.emoji}</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: tone.ink }}>
+              {label}
             </span>
             {trend.type === 'mainstream' && trend.mainstream && (
-              <span className="text-[9px] text-muted-foreground uppercase tracking-wider">{trend.mainstream.source}</span>
+              <span className="text-[10px] uppercase tracking-wider opacity-70" style={{ color: tone.ink }}>{trend.mainstream.source}</span>
             )}
           </div>
           {trend.type === 'qrt' && trend.sourceTweet ? (
             <>
-              <p className="text-[10px] text-foreground leading-snug line-clamp-3 italic">
-                &ldquo;{trend.sourceTweet.text.slice(0, 120)}{trend.sourceTweet.text.length > 120 ? '…' : ''}&rdquo;
+              <p className="text-[13px] text-foreground leading-snug line-clamp-3">
+                &ldquo;{trend.sourceTweet.text.slice(0, 140)}{trend.sourceTweet.text.length > 140 ? '…' : ''}&rdquo;
               </p>
-              <p className="text-[9px] text-muted-foreground">
+              <p className="text-[11px] font-medium" style={{ color: tone.ink }}>
                 @{trend.sourceTweet.authorHandle} · {trend.sourceTweet.likeCount.toLocaleString()} likes
               </p>
             </>
           ) : (
             <>
-              <p className="text-[11px] font-semibold text-foreground leading-snug line-clamp-2">{trend.headline}</p>
-              <p className="text-[10px] text-muted-foreground leading-relaxed line-clamp-2">{trend.context}</p>
+              <p className="text-[15px] font-semibold text-foreground leading-snug line-clamp-2">{trend.headline}</p>
+              <p className="text-[12px] text-foreground/60 leading-relaxed line-clamp-2">{trend.context}</p>
             </>
           )}
 
           {(state === 'idle' || state === 'error') && (
             <button
               onClick={() => generate(0)}
-              className="mt-0.5 flex items-center gap-1 text-[10px] font-medium text-amber-600 hover:text-amber-500 transition-colors"
+              className="mt-auto self-start flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-[12px] font-semibold shadow-sm transition-transform hover:scale-[1.03]"
+              style={{ color: tone.ink }}
             >
               <Sparkles size={10} />
               {state === 'error' ? errorMsg : trend.type === 'qrt' ? 'Generate QRT' : trend.type === 'mainstream' ? 'Generate LinkedIn post' : 'Generate post'}
@@ -322,9 +337,9 @@ function TrendCard({
           )}
 
           {state === 'loading' && (
-            <div className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground">
-              <Loader2 size={10} className="animate-spin" />
-              Writing...
+            <div className="mt-auto flex items-center gap-1.5 text-[12px] font-medium" style={{ color: tone.ink }}>
+              <Loader2 size={12} className="animate-spin" />
+              writing it in your voice
             </div>
           )}
 
@@ -409,12 +424,13 @@ export function TrendsStrip({ onSaveDraft, profile }: TrendsStripProps) {
   useEffect(() => { Promise.resolve().then(() => fetchTrends()); }, []);
 
   return (
-    <div className="shrink-0 border-b border-border">
-      <div className="px-6 py-2.5">
-        <div className="flex items-center gap-2 mb-2">
-          <span data-tour="pulse" className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-600/80">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+    <div className="shrink-0">
+      <div className="px-8 py-2">
+        <div className="flex items-center gap-2.5 mb-3">
+          <span className="grid size-8 place-items-center rounded-xl bg-[#FFF1DE] text-[16px]" aria-hidden>🔥</span>
+          <span data-tour="pulse" className="flex items-center gap-2 text-[18px] font-semibold tracking-tight text-foreground">
             Today&apos;s pulse
+            <span className="size-2 rounded-full bg-[#FF5A1F] animate-pulse" />
           </span>
           {remaining !== null && remaining <= 2 && (
             <span className="text-[10px] text-muted-foreground">
@@ -450,8 +466,8 @@ export function TrendsStrip({ onSaveDraft, profile }: TrendsStripProps) {
 
         {loading && (
           <div className="flex gap-2 overflow-x-auto pb-1">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="shrink-0 w-44 h-20 rounded-lg border border-border bg-muted/20 animate-pulse" />
+            {['#FFF6CC', '#FFE8EC', '#E3F2FF', '#E3F8EC', '#EFE9FF'].map((c, i) => (
+              <div key={i} className="shrink-0 w-64 h-[150px] rounded-2xl animate-pulse" style={{ backgroundColor: c }} />
             ))}
           </div>
         )}
@@ -468,7 +484,7 @@ export function TrendsStrip({ onSaveDraft, profile }: TrendsStripProps) {
         )}
 
         {!loading && !error && trends && (
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
             {trends.map(trend => (
               <TrendCard key={trend.id} trend={trend} profile={profile} onSave={onSaveDraft} />
             ))}

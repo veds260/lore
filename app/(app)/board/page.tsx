@@ -1,7 +1,7 @@
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { drafts } from '@/lib/db/schema';
-import { desc, eq } from 'drizzle-orm';
+import { drafts, ownPosts, skills } from '@/lib/db/schema';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { BoardClient } from '@/components/board/board-client';
 import { getActiveBrandId } from '@/lib/active-brand';
 import type { Draft, DraftStatus, Platform, RecommendedImage } from '@/components/board/types';
@@ -120,12 +120,18 @@ export default async function BoardPage({
   const { firstVisit } = await searchParams;
 
   let realDrafts: Draft[] = [];
+  const stats = { postsRead: 0, rulesLearned: 0 };
 
   if (session?.user?.id) {
     const brandId = await getActiveBrandId(session.user.id);
     const brand = brandId ? { id: brandId } : null;
 
     if (brand) {
+      const [read] = await db.select({ n: sql<number>`count(*)::int` }).from(ownPosts).where(eq(ownPosts.brandId, brand.id));
+      const [learned] = await db.select({ n: sql<number>`count(*)::int` }).from(skills).where(and(eq(skills.brandId, brand.id), eq(skills.status, 'active')));
+      stats.postsRead = read?.n ?? 0;
+      stats.rulesLearned = learned?.n ?? 0;
+
       const rows = await db
         .select({
           id: drafts.id,
@@ -180,8 +186,8 @@ export default async function BoardPage({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-hidden pt-5">
-        <BoardClient initialDrafts={realDrafts} firstVisit={isFirstVisit} />
+      <div className="flex-1 overflow-hidden">
+        <BoardClient initialDrafts={realDrafts} firstVisit={isFirstVisit} stats={stats} />
       </div>
     </div>
   );

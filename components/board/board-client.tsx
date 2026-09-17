@@ -10,12 +10,18 @@ import { SimpleListView } from './simple-list-view';
 import { LimitReachedModal } from '@/components/ui/limit-reached-modal';
 import { X, LayoutTemplate } from 'lucide-react';
 
+export interface BoardStats {
+  postsRead: number;
+  rulesLearned: number;
+}
+
 interface BoardClientProps {
   initialDrafts: Draft[];
   firstVisit?: boolean;
+  stats?: BoardStats;
 }
 
-export function BoardClient({ initialDrafts }: BoardClientProps) {
+export function BoardClient({ initialDrafts, stats }: BoardClientProps) {
   const [drafts, setDrafts] = useState<Draft[]>(initialDrafts);
   const [openId, setOpenId] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
@@ -163,7 +169,7 @@ export function BoardClient({ initialDrafts }: BoardClientProps) {
   }, []);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="h-full overflow-y-auto">
       {limitModal && (
         <LimitReachedModal
           limit={limitModal.limit}
@@ -174,6 +180,8 @@ export function BoardClient({ initialDrafts }: BoardClientProps) {
       {/* What's next: status sentence + suggested action */}
       <WhatsNext
         drafts={drafts.filter(d => !d.isDemo)}
+        profile={profile}
+        stats={stats ?? { postsRead: 0, rulesLearned: 0 }}
         onCardClick={id => setOpenId(prev => (prev === id ? null : id))}
         onComposerOpen={() => setComposerOpen(true)}
         onQuickGenerate={handleQuickGenerate}
@@ -198,12 +206,13 @@ export function BoardClient({ initialDrafts }: BoardClientProps) {
       )}
 
       {/* Main view */}
-      <div className="flex-1 overflow-y-auto">
+      <div>
         <SimpleListView
           drafts={drafts}
           onCardClick={id => setOpenId(prev => (prev === id ? null : id))}
           onQuickGenerate={handleQuickGenerate}
           onStatusChange={handleStatusChange}
+          profile={profile}
         />
       </div>
 
@@ -227,69 +236,107 @@ export function BoardClient({ initialDrafts }: BoardClientProps) {
   );
 }
 
-// WhatsNext: today-focused header.
-//  - empty state: minimal copy + three plain options
-//  - active state: "Today" label + status sentence + New post action
+// WhatsNext: the board's header. A greeting with the user's own face, a few real
+// numbers about their account, and one obvious way to start a post.
 
 interface WhatsNextProps {
   drafts: Draft[];
+  profile: Profile;
+  stats: BoardStats;
   onCardClick: (id: string) => void;
   onComposerOpen: () => void;
   onQuickGenerate: (id: string) => Promise<void | boolean>;
 }
 
-function WhatsNext({ drafts, onComposerOpen }: WhatsNextProps) {
-  // Empty state
-  if (drafts.length === 0) {
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 5) return 'up late';
+  if (h < 12) return 'morning';
+  if (h < 17) return 'afternoon';
+  return 'evening';
+}
+
+function Avatar({ profile, size }: { profile: Profile; size: number }) {
+  const [broken, setBroken] = useState(false);
+  const initial = (profile.displayName || '?').trim()[0]?.toUpperCase() ?? '?';
+  if (profile.avatarUrl && !broken) {
     return (
-      <div className="px-8 pt-2 pb-8 shrink-0">
-        <h1 className="text-xl font-semibold text-foreground mb-1.5 tracking-tight">
-          Let&apos;s get today&apos;s post ready.
-        </h1>
-        <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
-          Three ways in. Whichever feels fastest.
-        </p>
-
-        <div className="space-y-2">
-          <button
-            onClick={onComposerOpen}
-            data-tour="new-post"
-            className="w-full text-left bg-card border border-border rounded-lg px-4 py-3.5 hover:border-foreground/40 transition-colors"
-          >
-            <p className="text-[13.5px] font-medium text-foreground">Write something new</p>
-            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-              Type a topic. Lore writes the X and LinkedIn versions together.
-            </p>
-          </button>
-
-          <div className="bg-card border border-border rounded-lg px-4 py-3.5">
-            <p className="text-[13.5px] font-medium text-foreground">React to today&apos;s pulse</p>
-            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-              Scroll down to the pulse strip. Tap any generate button on a card you find sharp.
-            </p>
-          </div>
-
-          <div className="bg-card border border-border rounded-lg px-4 py-3.5">
-            <p className="text-[13.5px] font-medium text-foreground">Send Lore a voice memo</p>
-            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-              Connect Telegram in settings. Speak from anywhere, get drafts in your board.
-            </p>
-          </div>
-        </div>
-      </div>
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={profile.avatarUrl.replace('_normal.', '_400x400.')}
+        alt=""
+        referrerPolicy="no-referrer"
+        onError={() => setBroken(true)}
+        style={{ width: size, height: size }}
+        className="rounded-full object-cover ring-4 ring-white shadow-[0_6px_20px_-6px_rgba(0,0,0,0.25)]"
+      />
     );
   }
-
-  // Active state
   return (
-    <div className="px-8 pt-1 pb-1 shrink-0 flex items-center justify-end gap-4">
-      <button
-        data-tour="new-post"
-        onClick={onComposerOpen}
-        className="text-[12.5px] px-3 py-1.5 bg-foreground text-background rounded-md hover:opacity-90 transition-opacity font-medium"
-      >
-        New post
-      </button>
+    <span
+      style={{ width: size, height: size }}
+      className="grid place-items-center rounded-full bg-[#FF7A45] text-white text-2xl font-semibold ring-4 ring-white"
+    >
+      {initial}
+    </span>
+  );
+}
+
+const STAT_TILES = [
+  { key: 'read', label: 'posts it read', bg: '#FFF1E6', fg: '#C2410C', dot: '#FF7A45' },
+  { key: 'drafts', label: 'drafts cooking', bg: '#EAF1FF', fg: '#1D4ED8', dot: '#3B82F6' },
+  { key: 'ready', label: 'ready to post', bg: '#E8F8EE', fg: '#15803D', dot: '#22C55E' },
+  { key: 'rules', label: 'rules it learned', bg: '#F3EDFF', fg: '#6D28D9', dot: '#8B5CF6' },
+] as const;
+
+function WhatsNext({ drafts, profile, stats, onComposerOpen }: WhatsNextProps) {
+  const first = profile.displayName && profile.displayName !== 'Your Name' ? profile.displayName.split(' ')[0] : '';
+  const values: Record<(typeof STAT_TILES)[number]['key'], number> = {
+    read: stats.postsRead,
+    drafts: drafts.filter(d => d.status === 'drafts' || d.status === 'ideas').length,
+    ready: drafts.filter(d => d.status === 'review').length,
+    rules: stats.rulesLearned,
+  };
+  const empty = drafts.length === 0;
+
+  return (
+    <div className="px-8 pt-7 pb-6 shrink-0">
+      <div className="flex flex-wrap items-center gap-5">
+        <Avatar profile={profile} size={64} />
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[30px] leading-tight font-semibold tracking-tight text-foreground">
+            {greeting()}{first ? `, ${first.toLowerCase()}` : ''} <span aria-hidden>👋</span>
+          </h1>
+          <p className="mt-1 text-[15px] text-muted-foreground">
+            {empty
+              ? 'type a topic and lore writes it the way you actually talk'
+              : values.ready > 0
+                ? `${values.ready} post${values.ready === 1 ? ' is' : 's are'} ready to go out today`
+                : 'your drafts are waiting, pick one and make it yours'}
+          </p>
+        </div>
+        <button
+          data-tour="new-post"
+          onClick={onComposerOpen}
+          className="inline-flex items-center gap-2 rounded-xl bg-[#FF5A1F] px-5 py-3 text-[14px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(255,90,31,0.8)] transition-transform hover:-translate-y-0.5 active:translate-y-0"
+        >
+          <span className="text-lg leading-none">+</span> New post
+        </button>
+      </div>
+
+      <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {STAT_TILES.map(t => (
+          <div key={t.key} className="rounded-2xl px-4 py-3.5" style={{ backgroundColor: t.bg }}>
+            <p className="text-[28px] font-semibold leading-none tabular-nums" style={{ color: t.fg }}>
+              {values[t.key].toLocaleString()}
+            </p>
+            <p className="mt-1.5 flex items-center gap-1.5 text-[12.5px] font-medium" style={{ color: t.fg }}>
+              <span className="size-1.5 rounded-full" style={{ backgroundColor: t.dot }} />
+              {t.label}
+            </p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

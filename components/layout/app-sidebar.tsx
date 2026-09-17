@@ -306,15 +306,15 @@ export function AppSidebar({ user, activeBrand, allBrands = [], canAddBrand = fa
               href={href}
               data-tour={`nav-${tourKey}`}
               title={collapsed ? label : undefined}
-              className={`flex items-center rounded-md text-sm transition-colors ${
+              className={`flex items-center rounded-lg text-sm transition-colors ${
                 collapsed ? 'justify-center py-2' : 'gap-2.5 px-3 py-2'
               } ${
                 active
-                  ? 'bg-card text-foreground shadow-sm'
+                  ? 'bg-[#FFEDE3] text-[#C2410C] font-medium'
                   : 'text-muted-foreground hover:text-foreground hover:bg-accent'
               }`}
             >
-              <Icon size={15} strokeWidth={1.8} />
+              <Icon size={15} strokeWidth={active ? 2.2 : 1.8} />
               {!collapsed && label}
             </Link>
           );

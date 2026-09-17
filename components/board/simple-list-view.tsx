@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Loader2, ArrowRight } from 'lucide-react';
 import type { Draft, DraftStatus } from './types';
+import type { Profile } from '@/components/ui/platform-mockups';
+import { XMark, LinkedinMark } from '@/components/marketing/social';
 
 interface Props {
   drafts: Draft[];
@@ -11,15 +13,17 @@ interface Props {
   onQuickGenerate: (id: string) => Promise<void | boolean>;
   onStatusChange: (id: string, status: DraftStatus) => void;
   onDelete?: (id: string) => void;
+  profile?: Profile;
 }
 
-const SECTION_CAP = 3;
-const DOT_COLOR: Record<DraftStatus, string> = {
-  ideas:  '#a78bfa',
-  drafts: '#3b82f6',
-  review: '#d4a017',
-  posted: '#10a37f',
-};
+const SECTION_CAP = 6;
+interface Tone { accent: string; soft: string; ink: string }
+
+const TONES = {
+  ready:    { accent: '#22C55E', soft: '#E8F8EE', ink: '#15803D' },
+  progress: { accent: '#3B82F6', soft: '#EAF1FF', ink: '#1D4ED8' },
+  ideas:    { accent: '#8B5CF6', soft: '#F3EDFF', ink: '#6D28D9' },
+} satisfies Record<string, Tone>;
 
 function relTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
@@ -40,6 +44,8 @@ function voiceMatch(d: Draft): number | null {
 
 interface RowProps {
   draft: Draft;
+  tone: Tone;
+  profile?: Profile;
   primaryLabel: string;
   primaryAction: () => void;
   primaryLoading?: boolean;
@@ -47,66 +53,77 @@ interface RowProps {
   justAdded?: boolean;
 }
 
-function Row({ draft, primaryLabel, primaryAction, primaryLoading, onOpen, justAdded }: RowProps) {
-  // Collapse any internal blank lines so the line-clamp doesn't render orphan ellipses
-  const flat = draft.content.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+function MiniAvatar({ profile }: { profile?: Profile }) {
+  const [broken, setBroken] = useState(false);
+  const initial = (profile?.displayName || '?').trim()[0]?.toUpperCase() ?? '?';
+  if (profile?.avatarUrl && !broken) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={profile.avatarUrl} alt="" referrerPolicy="no-referrer" onError={() => setBroken(true)} className="size-8 rounded-full object-cover" />
+    );
+  }
+  return <span className="grid size-8 place-items-center rounded-full bg-[#FF7A45] text-[13px] font-semibold text-white">{initial}</span>;
+}
+
+function Row({ draft, tone, profile, primaryLabel, primaryAction, primaryLoading, onOpen, justAdded }: RowProps) {
   const vm = voiceMatch(draft);
-  const dot = DOT_COLOR[draft.status];
-  const platformLabel = draft.platform === 'both' ? 'X & LinkedIn' : draft.platform === 'linkedin' ? 'LinkedIn' : 'X';
+  const name = profile?.displayName && profile.displayName !== 'Your Name' ? profile.displayName : 'You';
+  const showX = draft.platform !== 'linkedin';
+  const showIn = draft.platform !== 'twitter';
 
   return (
     <div
-      className={`group bg-card border rounded-lg transition-colors flex items-center gap-3 px-4 py-2.5 ${
-        justAdded ? 'border-foreground/40' : 'border-border hover:border-muted-foreground/30'
+      className={`group relative flex flex-col overflow-hidden rounded-2xl bg-white p-4 pt-5 transition-all hover:-translate-y-0.5 hover:shadow-[0_14px_30px_-14px_rgba(0,0,0,0.25)] ${
+        justAdded ? 'ring-2' : 'ring-1 ring-black/[0.06]'
       }`}
+      style={justAdded ? { boxShadow: `0 0 0 2px ${tone.accent}` } : undefined}
     >
-      <span
-        className="w-1.5 h-1.5 rounded-full shrink-0"
-        style={{ backgroundColor: dot }}
-      />
+      <span className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: tone.accent }} />
 
-      <button
-        onClick={onOpen}
-        className="flex-1 min-w-0 text-left"
-      >
-        <p className="text-[13.5px] text-foreground leading-[1.45] line-clamp-1">
-          {flat}
+      <button onClick={onOpen} className="flex-1 text-left">
+        <div className="flex items-center gap-2.5">
+          <MiniAvatar profile={profile} />
+          <div className="min-w-0 flex-1 leading-tight">
+            <p className="truncate text-[13px] font-semibold text-foreground">{name}</p>
+            <p className="truncate text-[11.5px] text-muted-foreground">
+              {profile?.twitterHandle ? `@${profile.twitterHandle} · ` : ''}{relTime(draft.createdAt)}
+            </p>
+          </div>
+          <span className="flex items-center gap-1">
+            {showX && (
+              <span className="grid size-6 place-items-center rounded-md bg-[#0F1419] text-white" title="X">
+                <XMark className="size-3" />
+              </span>
+            )}
+            {showIn && (
+              <span className="grid size-6 place-items-center rounded-md bg-[#0A66C2] text-white" title="LinkedIn">
+                <LinkedinMark className="size-3" />
+              </span>
+            )}
+          </span>
+        </div>
+        <p className="mt-3 whitespace-pre-line text-[14px] leading-[1.5] text-foreground/90 line-clamp-5">
+          {draft.content.replace(/\n{3,}/g, '\n\n').trim()}
         </p>
       </button>
 
-      <div className="hidden md:flex items-center gap-2 text-[11px] text-muted-foreground shrink-0">
-        <span>{platformLabel}</span>
-        <span className="opacity-50">·</span>
-        <span className="tabular-nums">{relTime(draft.createdAt)}</span>
+      <div className="mt-4 flex items-center gap-2">
         {vm != null && (
-          <>
-            <span className="opacity-50">·</span>
-            <span className="tabular-nums" title="Voice match: how closely this sounds like you">
-              Voice {vm}%
-            </span>
-          </>
+          <span className="rounded-md px-2 py-1 text-[11px] font-medium tabular-nums" style={{ backgroundColor: tone.soft, color: tone.ink }} title="Voice match: how closely this sounds like you">
+            sounds {vm}% like you
+          </span>
         )}
-        {justAdded && (
-          <>
-            <span className="opacity-50">·</span>
-            <span className="text-foreground">Saved</span>
-          </>
-        )}
-      </div>
-
-      <div className="flex items-center gap-1.5 shrink-0">
-        <button
-          onClick={onOpen}
-          className="text-[11.5px] px-2.5 py-1.5 text-muted-foreground hover:text-foreground transition-colors"
-        >
+        {justAdded && <span className="text-[11px] font-medium" style={{ color: tone.ink }}>saved</span>}
+        <button onClick={onOpen} className="ml-auto rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-black/[0.04] hover:text-foreground">
           Edit
         </button>
         <button
           onClick={primaryAction}
           disabled={primaryLoading}
-          className="text-[11.5px] px-3 py-1.5 bg-foreground text-background rounded-md hover:opacity-90 transition-opacity disabled:opacity-40 font-medium flex items-center gap-1.5"
+          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          style={{ backgroundColor: tone.accent }}
         >
-          {primaryLoading ? <Loader2 size={11} className="animate-spin" /> : null}
+          {primaryLoading ? <Loader2 size={12} className="animate-spin" /> : null}
           {primaryLoading ? 'Working' : primaryLabel}
         </button>
       </div>
@@ -116,6 +133,9 @@ function Row({ draft, primaryLabel, primaryAction, primaryLoading, onOpen, justA
 
 interface SectionProps {
   label: string;
+  emoji: string;
+  tone: Tone;
+  profile?: Profile;
   hint?: string;
   emptyHint: string;
   items: Draft[];
@@ -128,30 +148,33 @@ interface SectionProps {
   now: number;
 }
 
-function Section({ label, hint, emptyHint, items, primaryLabelFor, primaryActionFor, generatingId, onOpen, browseHref, totalCount, now }: SectionProps) {
+function Section({ label, emoji, tone, profile, hint, emptyHint, items, primaryLabelFor, primaryActionFor, generatingId, onOpen, browseHref, totalCount, now }: SectionProps) {
   const overflow = totalCount != null && totalCount > items.length;
 
   return (
     <section>
-      <div className="flex items-baseline justify-between mb-2.5">
-        <div className="flex items-baseline gap-2.5">
-          <h2 className="text-[15px] font-semibold text-foreground tracking-tight">
-            {label}
-          </h2>
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <span className="grid size-8 place-items-center rounded-xl text-[16px]" style={{ backgroundColor: tone.soft }} aria-hidden>
+            {emoji}
+          </span>
+          <h2 className="text-[18px] font-semibold tracking-tight text-foreground">{label}</h2>
           {totalCount != null && (
-            <span className="text-[12px] tabular-nums text-muted-foreground">{totalCount}</span>
+            <span className="rounded-md px-2 py-0.5 text-[12px] font-semibold tabular-nums" style={{ backgroundColor: tone.soft, color: tone.ink }}>
+              {totalCount}
+            </span>
           )}
         </div>
         {hint && items.length > 0 && (
-          <span className="text-[11px] text-muted-foreground">{hint}</span>
+          <span className="text-[12px] text-muted-foreground">{hint}</span>
         )}
       </div>
       {items.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed">
+        <p className="rounded-2xl border-2 border-dashed px-4 py-4 text-[13px] leading-relaxed" style={{ borderColor: tone.soft, color: tone.ink }}>
           {emptyHint}
         </p>
       ) : (
-        <div className="space-y-1.5">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {items.map(d => {
             const ageMs = now - new Date(d.createdAt).getTime();
             const justAdded = ageMs >= 0 && ageMs < 5000;
@@ -159,6 +182,8 @@ function Section({ label, hint, emptyHint, items, primaryLabelFor, primaryAction
               <Row
                 key={d.id}
                 draft={d}
+                tone={tone}
+                profile={profile}
                 primaryLabel={primaryLabelFor(d)}
                 primaryAction={primaryActionFor(d)}
                 primaryLoading={generatingId === d.id}
@@ -182,7 +207,7 @@ function Section({ label, hint, emptyHint, items, primaryLabelFor, primaryAction
   );
 }
 
-export function SimpleListView({ drafts, onCardClick, onQuickGenerate, onStatusChange }: Props) {
+export function SimpleListView({ drafts, onCardClick, onQuickGenerate, onStatusChange, profile }: Props) {
   const [genId, setGenId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
@@ -206,8 +231,11 @@ export function SimpleListView({ drafts, onCardClick, onQuickGenerate, onStatusC
   posted.sort(byNewest);
 
   return (
-    <div className="px-8 py-2 space-y-4 w-full">
+    <div className="w-full space-y-8 px-8 pb-10 pt-6">
       <Section
+        emoji="🚀"
+        tone={TONES.ready}
+        profile={profile}
         label="Ready to post"
         hint={ready.length === 0 ? undefined : 'Polished and waiting'}
         emptyHint="Drafts you mark ready will land here, queued for the day you ship them."
@@ -221,6 +249,9 @@ export function SimpleListView({ drafts, onCardClick, onQuickGenerate, onStatusC
       />
 
       <Section
+        emoji="✍️"
+        tone={TONES.progress}
+        profile={profile}
         label="In progress"
         hint={inProg.length === 0 ? undefined : 'Drafts to polish'}
         emptyHint="Generated drafts you're still tweaking show up here."
@@ -234,6 +265,9 @@ export function SimpleListView({ drafts, onCardClick, onQuickGenerate, onStatusC
       />
 
       <Section
+        emoji="💡"
+        tone={TONES.ideas}
+        profile={profile}
         label="Just captured"
         hint={ideas.length === 0 ? undefined : 'Fresh ideas. Turn into posts'}
         emptyHint="Voice memos on Telegram, interview answers, and pulse-card saves all land here as ideas."
