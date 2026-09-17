@@ -52,8 +52,27 @@ function main() {
   }
 }
 
-function startDev() {
+async function portFree(host: string, port: number): Promise<boolean> {
+  const { createServer } = await import('node:net');
+  return new Promise(resolve => {
+    const probe = createServer();
+    probe.once('error', () => resolve(false));
+    probe.once('listening', () => probe.close(() => resolve(true)));
+    probe.listen(port, host);
+  });
+}
+
+async function startDev() {
   const host = process.env.LORE_HOST?.trim() || '127.0.0.1';
+  const port = Number(process.env.PORT) || 3000;
+  // Next quietly moves to the next port, and then the link in the terminal can point
+  // at whatever else is already answering on this one.
+  for (const h of new Set([host, '127.0.0.1', '::1'])) {
+    if (!(await portFree(h, port))) {
+      process.stdout.write(`\n  Port ${port} is taken on ${h}. Stop what is using it, or run: PORT=3001 npm run dev\n\n`);
+      process.exit(1);
+    }
+  }
   const next = createRequire(join(root, 'package.json')).resolve('next/dist/bin/next');
   const child = spawn(process.execPath, [next, 'dev', '-H', host, ...process.argv.slice(3)], { stdio: 'inherit' });
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {

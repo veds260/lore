@@ -367,8 +367,9 @@ Return ONLY valid JSON object with a trends array:
     }
   }
 
-  if (aiTrends.length === 0) {
-    return NextResponse.json({ error: 'Failed to generate trends' }, { status: 500 });
+  // Nothing to show is a quiet empty state. The page has its own words for that.
+  if (aiTrends.length === 0 && viralTweets.length === 0) {
+    return NextResponse.json({ trends: [], empty: true });
   }
 
   // Build QRT cards from the same viral tweets we already fetched

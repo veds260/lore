@@ -37,7 +37,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const isAdmin = !!adminEmail && !!session.user.email &&
     adminEmail.split(',').map(e => e.trim().toLowerCase()).includes(session.user.email.toLowerCase());
 
-  if (userBrands.length === 0 && !isAdmin && process.env.NODE_ENV !== 'development') {
+  // An install with nothing set up goes to onboarding, in development too: `npm run
+  // dev` is how a self-hosted Lore runs, so an exemption for it is an open door.
+  if (userBrands.length === 0 && !isAdmin) {
     redirect('/onboarding');
   }
 

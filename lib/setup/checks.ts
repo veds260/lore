@@ -64,7 +64,7 @@ async function checkDatabase(): Promise<Capability> {
       status: 'missing',
       fix: [
         '1. Start the Postgres that ships with Lore, from the Lore folder: `docker compose up -d`',
-        '2. Put this in .env.local: DATABASE_URL=postgresql://postgres:lore@localhost:5432/lore',
+        '2. Put this in .env.local: DATABASE_URL=postgresql://postgres:lore@localhost:5432/lore (Docker), or postgresql://YOURNAME@localhost:5432/lore for a Postgres you installed yourself',
         '3. Create the tables: `npm run db:push`',
         'Already have Postgres? Point DATABASE_URL at an empty database on it instead.',
       ],
@@ -95,7 +95,7 @@ async function checkDatabase(): Promise<Capability> {
       fix: [
         `Could not connect: ${err instanceof Error ? err.message.slice(0, 160) : String(err)}`,
         '1. Start the database. With Docker, run `docker compose up -d` in the Lore folder.',
-        '2. Check DATABASE_URL in .env.local. The Docker one is postgresql://postgres:lore@localhost:5432/lore',
+        '2. Check DATABASE_URL in .env.local. Docker uses postgresql://postgres:lore@localhost:5432/lore, a Postgres you installed yourself uses postgresql://YOURNAME@localhost:5432/lore',
         '3. If the tables are missing, run `npm run db:push`.',
       ],
     };

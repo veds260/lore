@@ -14,7 +14,9 @@ export async function register() {
     // configured, and nobody can open localhost on it anyway.
     const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '');
     const local = !configured || /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(configured);
-    const base = local ? `http://localhost:${process.env.PORT || 3000}` : configured;
+    // 127.0.0.1, not localhost: on a machine where localhost resolves to ::1 first,
+    // the link can land on whatever else is listening there.
+    const base = local ? `http://127.0.0.1:${process.env.PORT || 3000}` : configured;
     const url = `${base}/claim?token=${token}`;
     console.log(
       `\n  Lore is running and nobody owns it yet.\n  Your browser should open to finish setup. If it does not, open:\n\n  ${url}\n\n  The link works until someone uses it, and a restart issues a new one.\n`,

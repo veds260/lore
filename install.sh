@@ -218,7 +218,13 @@ if [ "$DB_READY" = yes ]; then
   fi
 fi
 
-if [ "$DB_READY" = yes ] && [ "${LORE_RELAY:-}" != off ]; then
+if [ "${LORE_RELAY:-}" = off ]; then
+  # saying no once means no from now on, not just for this run
+  if ! grep -q '^LORE_RELAY=' .env.local 2>/dev/null; then
+    printf 'LORE_RELAY=off\n' >> .env.local
+  fi
+  step "the shared relay stays off, LORE_RELAY=off is in .env.local"
+elif [ "$DB_READY" = yes ]; then
   step "connecting to the shared relay (LORE_RELAY=off skips this)"
   npm run --silent relay:connect 2>&1 | sed 's/^/  /' || true
 fi
