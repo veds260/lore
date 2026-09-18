@@ -10,7 +10,7 @@ export default async function RootPage() {
 
   const { setupAccess } = await import('@/lib/setup/claim');
   const access = await setupAccess();
-  if (access === 'open' || access === 'no-database') redirect('/setup');
+  if (access === 'open' || access === 'no-database' || access === 'no-tables') redirect('/setup');
 
   const { auth } = await import('@/lib/auth');
   const session = await auth();

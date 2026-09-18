@@ -2,7 +2,8 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { brands, ownPosts, brandVoiceHistory } from '@/lib/db/schema';
 import { callAI, MODEL_CREATIVE } from '@/lib/ai';
-import { syncBrandTweets } from '@/lib/sync-brand-tweets';
+import { NO_X_ACCESS, syncBrandTweets } from '@/lib/sync-brand-tweets';
+import { xAvailable } from '@/lib/twitterapi';
 
 // Hard formatting rules every brand voice must enforce.
 const BANNED_PATTERNS = `### Universal Rules (hard — never break)
@@ -51,7 +52,13 @@ export async function bootstrapVoiceFromPosts(
   if ((await countTweets()) === 0) {
     synced = await syncBrandTweets(brandId, brand.handle);
   }
-  if ((await countTweets()) === 0) return { ok: false, reason: 'no tweets available to learn from', synced };
+  if ((await countTweets()) === 0) {
+    // Nothing to learn from splits two ways, and only one of them is fixable by
+    // the person reading the reason.
+    const reason = (await xAvailable()) ? 'no tweets available to learn from' : NO_X_ACCESS;
+    console.warn(`[bootstrapVoice] brand ${brandId}: ${reason}`);
+    return { ok: false, reason, synced };
+  }
 
   // ORIGINAL posts only, never learn voice from replies (reactive/conversational) or retweets.
   // The reply/RT exclusion runs IN SQL so the limit captures originals; otherwise a heavy replier's

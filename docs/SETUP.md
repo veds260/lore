@@ -1,6 +1,6 @@
 # Setting up Lore
 
-Lore runs on your machine and uses an AI agent you already pay for. There is no Lore account, and your drafts, database and model calls stay local. If you skip your own X, Fish Audio or Groq keys, those calls can go through an optional shared relay instead, which is covered further down and easy to turn off.
+Lore runs on your machine and uses an AI agent you already pay for. There is no Lore account, and your drafts and your database stay local. Model calls do not stay local: they go to Anthropic, OpenAI or OpenRouter, whichever one you connect, on your own CLI session or your own key. X lookups and voice can go through an optional shared relay when you have no key of your own for them, which is covered further down and easy to turn off.
 
 If you get stuck at any point, run `npm run doctor`. It checks everything below and prints the exact command to fix whatever is missing.
 
@@ -183,16 +183,6 @@ npm run relay:connect   # connects this install to the relay
 The credits start locked. Open `/setup`, go to Extras and pick Shared relay. Star the repo and confirm it by signing in to GitHub with the code shown, then follow [@vedsayys](https://x.com/vedsayys) on X and put the code it gives you in your bio or a post. You can remove the code once it says verified. Free credits need accounts that are at least 30 days old, and the X account needs 10 followers and 10 posts. Each account unlocks once, and reinstalling carries over what was left. The key is saved in your database, or you can set `LORE_RELAY_KEY` yourself.
 
 Your own keys always take priority. The relay sees X handles and search queries, the text being spoken, voice answers while they are transcribed, and your relay key, and never your drafts, database or prompts. To switch it off, put `LORE_RELAY=off` in `.env.local`.
-
----
-
-## Step 5 (optional): webhooks
-
-Push Lore events into n8n, Make, Zapier, Slack or your own service the moment they happen. See [WEBHOOKS.md](./WEBHOOKS.md) for the full guide.
-
-```bash
-echo "LORE_WEBHOOK_SECRET=$(openssl rand -hex 32)" >> .env.local
-```
 
 ---
 

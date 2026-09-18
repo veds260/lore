@@ -25,7 +25,7 @@ one state worth avoiding.
 **Third-party text reaches the model.** Lore reads posts, threads and pages that
 strangers wrote, and puts them in prompts. Treat model output as untrusted: it is
 parsed and validated, never executed. When the CLI provider is used, the agent runs
-with tools switched off (`--allowedTools ''` for Claude Code, `--sandbox read-only`
+with tools switched off (`--tools ''` for Claude Code, `--sandbox read-only`
 for Codex) and with a scrubbed environment that excludes `DATABASE_URL`, `AUTH_SECRET`
 and every API key. Do not relax those flags to "fix" a prompt that wants to read a
 file.

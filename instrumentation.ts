@@ -3,6 +3,24 @@ export async function register() {
   if (process.env.LORE_SKIP_CLAIM_BANNER === 'true') return;
 
   try {
+    const { databaseState } = await import('@/lib/setup/db-state');
+    const report = await databaseState();
+
+    // A fresh clone lands here with Postgres up and nothing in it. Saying nothing
+    // leaves the person on a setup page with no way forward, so say the command.
+    if (report.state === 'no-tables') {
+      console.log(
+        `\n  Lore reached the database at ${report.host ?? 'DATABASE_URL'} and it has no tables yet.\n  Create them, then start Lore again:\n\n  npm run db:push\n`,
+      );
+      return;
+    }
+    if (report.state === 'unreachable') {
+      console.log(
+        `\n  Lore could not reach the database at ${report.host ?? 'DATABASE_URL'}.\n  ${report.error ?? ''}\n  Start Postgres (docker compose up -d) and check DATABASE_URL in .env.local, then run npm run doctor.\n`,
+      );
+      return;
+    }
+
     const { isUnclaimed, issueClaimToken } = await import('@/lib/setup/claim');
     if (!(await isUnclaimed())) return;
 
@@ -24,7 +42,6 @@ export async function register() {
     const { openWhenReady } = await import('@/lib/setup/open-browser');
     void openWhenReady(base, url);
   } catch {
-    // No database yet. The setup page explains what to do.
+    // Something below this is broken in a way the setup page explains better.
   }
 }
-

@@ -10,6 +10,13 @@ if (typeof load === 'function') {
       // not present
     }
   }
+} else {
+  // Node 20.12 added process.loadEnvFile. Below that, .env.local is never read and
+  // every check that follows reports a variable as missing when it is really there.
+  console.warn(
+    `\n  This is Node ${process.versions.node}. Reading .env.local from a script needs Node 20.12 or newer,\n`
+      + '  so everything in that file will look unset below. Upgrade Node and run this again.\n',
+  );
 }
 
 export {};

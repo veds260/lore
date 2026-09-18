@@ -5,10 +5,23 @@ import { eq, sql } from 'drizzle-orm';
 
 const SIX_MONTHS_MS = 6 * 30 * 24 * 60 * 60 * 1000;
 
+// Reading someone's own posts is the first thing Lore does and the thing everything
+// else is built on, so an install with no X access has to hear about it. Returning 0
+// on its own looks exactly like an account that has never posted.
+export const NO_X_ACCESS =
+  'X lookups are not set up, so no posts were imported. Either put TWITTERAPI_IO_KEY in .env.local (key from twitterapi.io/dashboard), or open the setup page, go to Extras, pick Shared relay and unlock the free credits. Then sync the handle again.';
+
+function warnNoX(where: string, handle: string): void {
+  console.warn(`[${where}] @${handle.replace(/^@/, '')}: ${NO_X_ACCESS}`);
+}
+
 // Fast-path: profile info + 10 most recent tweets. Used during interview-first onboarding
 // so the question generator has something specific to reference in Q1-Q9. ~2-3 seconds.
 export async function quickSyncBrandTweets(brandId: string, handle: string): Promise<number> {
-  if (!(await xAvailable())) return 0;
+  if (!(await xAvailable())) {
+    warnNoX('quickSyncBrandTweets', handle);
+    return 0;
+  }
 
   const [profileRes, tweetsRes] = await Promise.allSettled([
     fetchUserInfo(handle),
@@ -69,7 +82,10 @@ export async function quickSyncBrandTweets(brandId: string, handle: string): Pro
 }
 
 export async function syncBrandTweets(brandId: string, handle: string): Promise<number> {
-  if (!(await xAvailable())) return 0;
+  if (!(await xAvailable())) {
+    warnNoX('syncBrandTweets', handle);
+    return 0;
+  }
 
   // Fetch profile info (avatar + follower count) alongside tweets
   const [userInfo] = await Promise.allSettled([
@@ -101,7 +117,15 @@ export async function syncBrandTweets(brandId: string, handle: string): Promise<
   let tweets: Awaited<ReturnType<typeof fetchUserTweetsSince>>;
   try {
     tweets = await fetchUserTweetsSince(handle, since, 200);
-  } catch {
+  } catch (err) {
+    console.error(
+      `[syncBrandTweets] @${handle.replace(/^@/, '')}: the X lookup failed, so no posts were imported. ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return 0;
+  }
+
+  if (tweets.length === 0) {
+    console.warn(`[syncBrandTweets] @${handle.replace(/^@/, '')}: X returned no posts from the last six months.`);
     return 0;
   }
 

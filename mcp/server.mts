@@ -2,14 +2,32 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
-// Runs outside Next, so nothing has loaded the env file yet.
-for (const file of ['.env.local', '.env']) {
-  try {
-    process.loadEnvFile(file);
-    break;
-  } catch {
-    // not there, try the next one
+// Runs outside Next, so nothing has loaded the env file yet. process.loadEnvFile
+// landed in Node 20.12; on an older Node it is undefined and everything in
+// .env.local looks unset, which is worth saying out loud rather than failing on
+// the first variable that reads as missing.
+const loadEnvFile = (process as NodeJS.Process & { loadEnvFile?: (path: string) => void }).loadEnvFile;
+
+if (typeof loadEnvFile === 'function') {
+  for (const file of ['.env.local', '.env']) {
+    try {
+      loadEnvFile.call(process, file);
+      break;
+    } catch {
+      // not there, try the next one
+    }
   }
+}
+
+if (!process.env.DATABASE_URL) {
+  console.error(
+    typeof loadEnvFile === 'function'
+      ? 'DATABASE_URL is not set. Copy .env.example to .env.local, or run `npm run setup`.'
+      : `This is Node ${process.versions.node}, and reading .env.local from a script needs Node 20.12 or newer. `
+        + 'DATABASE_URL may well be set in the file, nothing here can read it. Upgrade Node, or start the '
+        + 'MCP server with DATABASE_URL=... in front of the command.',
+  );
+  process.exit(1);
 }
 
 const { and, desc, eq } = await import('drizzle-orm');

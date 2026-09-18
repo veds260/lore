@@ -64,6 +64,9 @@
     "tailwindcss": "^4",
     "typescript": "^5"
   },
+  "engines": {
+    "node": ">=20.12"
+  },
   "license": "AGPL-3.0-or-later",
   "description": "Self-hosted content tool that learns how you write and holds every draft to it.",
   "repository": {

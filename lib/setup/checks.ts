@@ -71,35 +71,41 @@ async function checkDatabase(): Promise<Capability> {
     };
   }
 
-  // A URL in the env proves nothing, so open a connection and read one row.
-  try {
-    const { db } = await import('../db');
-    const { sql } = await import('drizzle-orm');
-    await db.execute(sql`select 1`);
-    const host = (() => { try { return new URL(url).host; } catch { return 'configured'; } })();
+  // A URL in the env proves nothing, and neither does `select 1`, which an empty
+  // database answers just as happily as a set-up one. Look for the tables too, so
+  // this agrees with what the setup page says.
+  const { databaseState, DB_PUSH_FIX } = await import('./db-state');
+  const report = await databaseState();
+  const base: Omit<Capability, 'status'> = {
+    id: 'database',
+    label: 'Database',
+    required: true,
+    unlocks: 'Your drafts, voice profile and history.',
+  };
+
+  if (report.state === 'ready') {
+    return { ...base, status: 'ok', detail: `connected to ${report.host ?? 'configured'}` };
+  }
+
+  if (report.state === 'no-tables') {
     return {
-      id: 'database',
-      label: 'Database',
-      required: true,
-      unlocks: 'Your drafts, voice profile and history.',
-      status: 'ok',
-      detail: `connected to ${host}`,
-    };
-  } catch (err) {
-    return {
-      id: 'database',
-      label: 'Database',
-      required: true,
-      unlocks: 'Your drafts, voice profile and history.',
+      ...base,
       status: 'broken',
-      fix: [
-        `Could not connect: ${err instanceof Error ? err.message.slice(0, 160) : String(err)}`,
-        '1. Start the database. With Docker, run `docker compose up -d` in the Lore folder.',
-        '2. Check DATABASE_URL in .env.local. Docker uses postgresql://postgres:lore@localhost:5432/lore, a Postgres you installed yourself uses postgresql://YOURNAME@localhost:5432/lore',
-        '3. If the tables are missing, run `npm run db:push`.',
-      ],
+      detail: `reachable at ${report.host ?? 'configured'}, but the tables are missing`,
+      fix: DB_PUSH_FIX,
     };
   }
+
+  return {
+    ...base,
+    status: 'broken',
+    fix: [
+      `Could not connect: ${(report.error ?? 'unknown error').slice(0, 160)}`,
+      '1. Start the database. With Docker, run `docker compose up -d` in the Lore folder.',
+      '2. Check DATABASE_URL in .env.local. Docker uses postgresql://postgres:lore@localhost:5432/lore, a Postgres you installed yourself uses postgresql://YOURNAME@localhost:5432/lore',
+      '3. Once it answers, create the tables with `npm run db:push`.',
+    ],
+  };
 }
 
 async function checkTelegram(): Promise<Capability> {
@@ -232,25 +238,6 @@ async function checkRelay(): Promise<Capability> {
   }
 }
 
-function checkWebhooks(): Capability {
-  const secret = env('LORE_WEBHOOK_SECRET');
-  return {
-    id: 'webhooks',
-    label: 'Outgoing webhooks',
-    required: false,
-    unlocks: 'Push Lore events into n8n, Make, Zapier, Slack or your own service as they happen.',
-    status: secret ? 'ok' : 'missing',
-    detail: secret ? 'signing key set, deliveries will be signed' : undefined,
-    fix: secret ? undefined : [
-      // openssl is not on a plain Windows install, and Node always is.
-      '1. Generate a signing key: `node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"`',
-      '2. Put it in .env.local as LORE_WEBHOOK_SECRET',
-      '3. Add endpoints in Settings, or POST them to /api/webhooks/endpoints',
-      'Receivers verify the X-Lore-Signature header against this key. See docs/WEBHOOKS.md',
-    ],
-  };
-}
-
 async function checkTwitter(): Promise<Capability> {
   const key = env('TWITTERAPI_IO_KEY');
   const relay = key ? false : await relayConnected();
@@ -275,7 +262,6 @@ export async function runChecks(): Promise<Capability[]> {
     checkDatabase(),
     checkTelegram(),
     checkVoice(),
-    Promise.resolve(checkWebhooks()),
     checkTwitter(),
     checkRelay(),
   ]);

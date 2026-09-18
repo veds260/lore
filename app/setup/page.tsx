@@ -152,6 +152,20 @@ export default async function SetupPage({
       </main>
     );
   }
+  if (access === 'no-tables') {
+    return (
+      <main className="min-h-screen grid place-items-center px-6">
+        <div className="max-w-md text-center">
+          <h1 className="text-lg font-semibold">The database is empty</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Postgres is running and Lore can reach it. The tables are not there yet, so run this in the
+            Lore folder and start Lore again:
+          </p>
+          <pre className="mt-4 rounded-md border border-border bg-card p-3.5 text-left text-[12.5px]">npm run db:push</pre>
+        </div>
+      </main>
+    );
+  }
   if (access === 'open') {
     return (
       <SetupShell current={0}>

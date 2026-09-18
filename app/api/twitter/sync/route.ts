@@ -4,7 +4,7 @@ import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { brands, ownPosts } from '@/lib/db/schema';
 import { eq, and, gte, count } from 'drizzle-orm';
-import { syncBrandTweets } from '@/lib/sync-brand-tweets';
+import { NO_X_ACCESS, syncBrandTweets } from '@/lib/sync-brand-tweets';
 import { deductCredits, checkDailyScrapeLimit } from '@/lib/credits';
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // re-fetch after 7 days
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (!(await xAvailable())) {
-    return NextResponse.json({ error: 'Twitter API not configured' }, { status: 503 });
+    return NextResponse.json({ error: NO_X_ACCESS, type: 'x_setup' }, { status: 503 });
   }
 
   // Check daily scrape limit

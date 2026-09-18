@@ -4,10 +4,12 @@ Lore reads the last 90 days of your posts before it writes anything, learns how 
 actually write, and turns every edit you make into a rule it will not break again.
 
 It runs on your machine, against an AI agent you already pay for, and there is no
-Lore account. Your drafts, your database and your model calls stay on your machine.
-When you have not set your own X, Fish Audio or Groq keys, those calls go through a
-shared relay on limited free credits, and `LORE_RELAY=off` turns that off. Lore never
-posts for you. Every draft has a Post on X button that opens X with the text filled in,
+Lore account. Your drafts and your database stay on your machine. Model calls leave it,
+because the model is not local: they go to Anthropic, OpenAI or OpenRouter, whichever
+one you connect, through your own CLI session or your own key, and they are billed and
+logged under your account there. X lookups and voice go through a shared relay when you
+have not set your own X, Fish Audio or Groq keys, on limited free credits, and
+`LORE_RELAY=off` turns that off. Lore never posts for you. Every draft has a Post on X button that opens X with the text filled in,
 and you press send.
 
 macOS, Linux and Windows all run it. You need Node 20 or newer and either Docker or
@@ -93,8 +95,7 @@ whatever your own plan allows. Set `LORE_PROVIDER` to `claude`, `codex` or `api`
 pin a choice in `.env.local` instead.
 
 Everything else is optional and degrades quietly when it is absent: Telegram, X
-lookups, voice interviews, outgoing webhooks. The setup page lists what each one
-turns on.
+lookups, voice interviews. The setup page lists what each one turns on.
 
 ## Shared relay
 
@@ -139,9 +140,9 @@ Claude Desktop wants the same thing in its config file instead:
 ```
 
 It exposes five tools: `list_brands`, `get_voice`, `list_drafts`, `generate_post`
-and `save_idea`. The server talks to your local database directly, so it inherits
-whatever is already configured and sends nothing anywhere else. `docs/CONNECTOR.md`
-has the detail.
+and `save_idea`. The server talks to your local database directly and inherits whatever
+this install already has configured, so `generate_post` goes to the same model provider
+the app uses and nothing else leaves the machine. `docs/CONNECTOR.md` has the detail.
 
 ## Sign-in
 
@@ -175,7 +176,7 @@ lib/setup/      one capability registry behind both `npm run doctor` and /setup
 lib/db/         drizzle schema
 worker/         the background agent: briefs, scheduling, Telegram
 mcp/            the MCP server that Claude connects to
-docs/           SETUP.md, CONNECTOR.md and WEBHOOKS.md
+docs/           SETUP.md and CONNECTOR.md
 ```
 
 ## Commands

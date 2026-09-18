@@ -103,18 +103,23 @@ export async function claimInstance(input: ClaimInput): Promise<ClaimResult> {
   return { ok: true, sessionToken: await createSession(user.id) };
 }
 
-export type SetupAccess = 'open' | 'owner' | 'denied' | 'no-database';
+export type SetupAccess = 'open' | 'owner' | 'denied' | 'no-database' | 'no-tables';
 
 /**
  * Who may see setup. Open while nobody owns the instance, then only the owner,
  * the first account created. A database it cannot read never counts as open.
+ *
+ * A database that answers but has no tables is its own answer: the fix there is
+ * `npm run db:push`, and telling that person to start Postgres sends them in a
+ * circle.
  */
 export async function setupAccess(): Promise<SetupAccess> {
   let owner: { id: string } | undefined;
   try {
     [owner] = await db.select({ id: users.id }).from(users).orderBy(asc(users.createdAt)).limit(1);
   } catch {
-    return 'no-database';
+    const { databaseState } = await import('./db-state');
+    return (await databaseState()).state === 'no-tables' ? 'no-tables' : 'no-database';
   }
   if (!owner) return 'open';
   const { auth } = await import('@/lib/auth');
