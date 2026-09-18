@@ -8,8 +8,9 @@
 # you a running app. It never asks for a password and never writes outside the
 # directory it creates.
 #
-# Runs on macOS and Linux, and on Windows inside a WSL2 distro. Needs git, Node 20
-# or newer, and either Docker or a Postgres it can reach. POSIX sh, no bashisms.
+# Runs on macOS and Linux, and on Windows inside a WSL2 distro. Native Windows has
+# its own installer, install.ps1. Needs git, Node 20 or newer, and either Docker or
+# a Postgres it can reach. POSIX sh, no bashisms.
 
 set -eu
 
@@ -28,8 +29,8 @@ need() {
 
 has() { command -v "$1" >/dev/null 2>&1; }
 
-# macOS, Linux, or Linux running inside Windows (WSL2). There is no native Windows
-# path on purpose: on Windows you install WSL2 and run all of this inside it.
+# macOS, Linux, or Linux running inside Windows (WSL2). A Windows shell that lands
+# here by accident gets pointed at install.ps1.
 case "$(uname -s 2>/dev/null || echo unknown)" in
   Darwin) PLATFORM=mac ;;
   Linux)
@@ -85,7 +86,11 @@ postgres_hint() {
 say "Installing Lore"
 
 if [ "$PLATFORM" = windows ]; then
-  die "This looks like Git Bash or MSYS. On Windows, Lore runs inside WSL2: open PowerShell as administrator, run wsl --install, restart, then run this same command in your Ubuntu terminal."
+  die "This looks like Git Bash or MSYS. Windows has its own installer: open PowerShell and run
+
+  irm https://raw.githubusercontent.com/veds260/lore/main/install.ps1 | iex
+
+  WSL2 is the other way, if you would rather have a Linux shell: run wsl --install in an administrator PowerShell, restart, then run this same command inside Ubuntu."
 fi
 
 need git "Install it from https://git-scm.com"

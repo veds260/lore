@@ -1,0 +1,236 @@
+name: Windows
+
+# Proves the Windows install on a real Windows machine: run install.ps1 end to end
+# against the Postgres the runner image already has, then claim the install over
+# HTTP and walk the same gate the Linux and macOS runs rely on.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install:
+    name: install.ps1 on windows-latest
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Where Lore gets installed
+        run: |
+          "LORE_DIR=$env:RUNNER_TEMP\lore" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: install.ps1 parses, in PowerShell 7 and in Windows PowerShell 5.1
+        shell: pwsh
+        run: |
+          $bad = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path ./install.ps1), [ref]$null, [ref]$bad) | Out-Null
+          if ($bad) { $bad | ForEach-Object { Write-Host $_ }; throw 'install.ps1 does not parse under PowerShell 7' }
+          Write-Host 'parses under PowerShell 7'
+
+      - name: Windows PowerShell 5.1 reads it too
+        shell: powershell
+        run: |
+          $bad = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path ./install.ps1), [ref]$null, [ref]$bad) | Out-Null
+          if ($bad) { $bad | ForEach-Object { Write-Host $_ }; throw 'install.ps1 does not parse under Windows PowerShell 5.1' }
+          Write-Host 'parses under Windows PowerShell 5.1'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Start the Postgres the image ships with
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $svc = Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $svc) { throw 'This image has no PostgreSQL service.' }
+          Write-Host "found $($svc.Name), currently $($svc.Status), start type $($svc.StartType)"
+          # The image leaves it installed and switched off, so turn it back on first.
+          if ($svc.StartType -eq 'Disabled') { Set-Service -Name $svc.Name -StartupType Manual }
+          if ($svc.Status -ne 'Running') {
+            try {
+              Start-Service $svc.Name -ErrorAction Stop
+            } catch {
+              Write-Host "Start-Service said: $_"
+              Get-EventLog -LogName Application -Source '*postgres*' -Newest 10 -ErrorAction SilentlyContinue |
+                ForEach-Object { Write-Host "  $($_.TimeGenerated) $($_.Message)" }
+              throw
+            }
+          }
+          (Get-Service $svc.Name).WaitForStatus('Running', (New-TimeSpan -Seconds 90))
+
+          $bin = $env:PGBIN
+          if (-not $bin -or -not (Test-Path (Join-Path $bin 'psql.exe'))) {
+            $bin = (Get-ChildItem 'C:\Program Files\PostgreSQL\*\bin\psql.exe' | Sort-Object FullName -Descending | Select-Object -First 1).DirectoryName
+          }
+          if (-not $bin) { throw 'psql.exe is not on this image.' }
+          Write-Host "psql lives in $bin"
+
+          # The image documents postgres/root. Take whatever the image set, if it set one.
+          $pw = if ($env:PGPASSWORD) { $env:PGPASSWORD } else { 'root' }
+          $env:PGPASSWORD = $pw
+          for ($i = 0; $i -lt 30; $i++) {
+            & "$bin\pg_isready.exe" -h 127.0.0.1 -q
+            if ($LASTEXITCODE -eq 0) { break }
+            Start-Sleep -Seconds 2
+          }
+          & "$bin\psql.exe" -U postgres -h 127.0.0.1 -d postgres -c 'select version()'
+          if ($LASTEXITCODE -ne 0) { throw 'The runner Postgres is up but would not let postgres in.' }
+
+          "LORE_DB_PASSWORD=$pw" | Out-File -FilePath $env:GITHUB_ENV  -Append -Encoding utf8
+          $bin                   | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Give the installer a branch to clone
+        run: |
+          # actions/checkout can leave a detached HEAD, and the installer clones by
+          # branch name the way a person would.
+          git -C "$env:GITHUB_WORKSPACE" branch -f lore-ci-source HEAD
+
+      - name: Run install.ps1
+        env:
+          LORE_REPO: ${{ github.workspace }}
+          LORE_BRANCH: lore-ci-source
+          LORE_DB_NAME: lore_ci
+          LORE_RELAY: 'off'
+          LORE_NO_START: '1'
+          LORE_YES: '1'
+        run: ./install.ps1
+
+      - name: What the installer wrote
+        run: |
+          $envFile = Join-Path $env:LORE_DIR '.env.local'
+          if (-not (Test-Path $envFile)) { throw 'no .env.local' }
+          $text = Get-Content $envFile -Raw
+          if ($text -notmatch '(?m)^AUTH_SECRET=.{32,}$')                 { throw 'AUTH_SECRET was not generated' }
+          if ($text -notmatch '(?m)^DATABASE_URL=postgresql://.+/lore_ci$') { throw 'DATABASE_URL does not point at the database it created' }
+          if ($text -notmatch '(?m)^LORE_RELAY=off$')                     { throw 'LORE_RELAY=off did not stick' }
+          # A byte order mark here would end up inside the name of the first setting.
+          $bytes = [System.IO.File]::ReadAllBytes($envFile)
+          if ($bytes[0] -eq 0xEF) { throw '.env.local starts with a byte order mark' }
+          Write-Host 'env file looks right'
+
+      - name: Tests, in the copy the installer made
+        working-directory: ${{ runner.temp }}\lore
+        run: npm test
+
+      - name: Claim the install and walk the setup gate
+        working-directory: ${{ runner.temp }}\lore
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = 'http://127.0.0.1:3000'
+          $outLog = Join-Path $PWD 'dev-out.log'
+          $errLog = Join-Path $PWD 'dev-err.log'
+          New-Item -ItemType File -Path $outLog, $errLog -Force | Out-Null
+
+          # npm.cmd by name: Start-Process cannot run the npm.ps1 that sits beside it.
+          $npm = (Get-Command npm.cmd -ErrorAction SilentlyContinue).Source
+          if (-not $npm) { $npm = (Get-Command npm).Source }
+          Write-Host "starting $npm run dev"
+          $dev = Start-Process -FilePath $npm -ArgumentList 'run', 'dev' -PassThru -NoNewWindow `
+                   -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+
+          function DevLog { (Get-Content $outLog -Raw -ErrorAction SilentlyContinue) + (Get-Content $errLog -Raw -ErrorAction SilentlyContinue) }
+          function Bail ($why) { Write-Host '--- dev server output ---'; Write-Host (DevLog); throw $why }
+
+          $up = $false
+          for ($i = 0; $i -lt 120; $i++) {
+            try {
+              if ((Invoke-WebRequest "$base/api/health" -UseBasicParsing -TimeoutSec 5).StatusCode -eq 200) { $up = $true; break }
+            } catch { Start-Sleep -Seconds 2 }
+          }
+          if (-not $up) { Bail 'The dev server never answered on 127.0.0.1:3000.' }
+          Write-Host 'dev server is up'
+
+          # The claim link is printed once, at boot, and is the only way in.
+          $token = $null
+          for ($i = 0; $i -lt 45; $i++) {
+            $m = [regex]::Match((DevLog), 'claim\?token=([0-9a-f]{32,})')
+            if ($m.Success) { $token = $m.Groups[1].Value; break }
+            Start-Sleep -Seconds 2
+          }
+          if (-not $token) { Bail 'No claim link was printed.' }
+          Write-Host "claim link printed, token is $($token.Length) characters"
+
+          Add-Type -AssemblyName System.Net.Http
+          $handler = [System.Net.Http.HttpClientHandler]::new()
+          $handler.AllowAutoRedirect = $false
+          $handler.UseCookies = $false
+          $http = [System.Net.Http.HttpClient]::new($handler)
+          $http.Timeout = [TimeSpan]::FromMinutes(4)
+
+          function Send ($method, $path, $cookie, $content) {
+            $verb = if ($method -eq 'Post') { [System.Net.Http.HttpMethod]::Post } else { [System.Net.Http.HttpMethod]::Get }
+            $req = [System.Net.Http.HttpRequestMessage]::new($verb, "$base$path")
+            if ($cookie)  { $req.Headers.TryAddWithoutValidation('Cookie', $cookie) | Out-Null }
+            if ($content) { $req.Content = $content }
+            return $http.SendAsync($req).GetAwaiter().GetResult()
+          }
+
+          function Redirects ($label, $path, $cookie, $to) {
+            $res = Send 'Get' $path $cookie $null
+            $code = [int]$res.StatusCode
+            $loc = if ($res.Headers.Location) { $res.Headers.Location.ToString() } else { '(none)' }
+            Write-Host "  $path -> $code $loc"
+            if ($code -lt 300 -or $code -ge 400) { Bail "$label should have redirected, got $code" }
+            if (-not $loc.Contains($to)) { Bail "$label should have gone to $to, went to $loc" }
+          }
+
+          # Nobody owns it yet, so the front door is setup.
+          Redirects 'an unclaimed install' '/' $null '/setup'
+
+          $fields = [System.Collections.Generic.List[System.Collections.Generic.KeyValuePair[string, string]]]::new()
+          foreach ($pair in @(
+            @('token', $token),
+            @('name', 'CI Runner'),
+            @('email', 'ci@lore-windows-test.example'),
+            @('password', 'a-password-only-this-job-knows')
+          )) { $fields.Add([System.Collections.Generic.KeyValuePair[string, string]]::new($pair[0], $pair[1])) }
+
+          $res = Send 'Post' '/api/claim' $null ([System.Net.Http.FormUrlEncodedContent]::new($fields))
+          if ([int]$res.StatusCode -ne 303) { Bail "Claiming the install answered $([int]$res.StatusCode), expected 303" }
+          $raw = $res.Headers.GetValues('Set-Cookie') | Where-Object { $_ -like 'authjs.session-token=*' } | Select-Object -First 1
+          if (-not $raw) { Bail 'The claim gave back no session cookie.' }
+          $cookie = ($raw -split ';')[0]
+          Write-Host 'claimed, and the owner session came back'
+
+          # The same gate the Linux and macOS runs rely on: an install with nothing
+          # set up sends you to onboarding, and onboarding sends you to the model step.
+          Redirects 'an app page'  '/board'      $cookie '/onboarding'
+          Redirects 'onboarding'   '/onboarding' $cookie '/setup?step=model'
+
+          # And the model step tells the truth on a machine with no agent CLI on it.
+          $res = Send 'Get' '/api/setup/model' $cookie $null
+          if ([int]$res.StatusCode -ne 200) { Bail "The model step answered $([int]$res.StatusCode)" }
+          $model = $res.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+          $claude = $model.options | Where-Object { $_.id -eq 'claude' }
+          $codex  = $model.options | Where-Object { $_.id -eq 'codex' }
+          Write-Host "  claude installed=$($claude.installed) codex installed=$($codex.installed) verified=$($model.verified) active=$($model.active)"
+          if ($claude.installed -or $claude.available) { Bail 'It claims Claude Code is installed, and nothing installed it.' }
+          if ($codex.installed  -or $codex.available)  { Bail 'It claims Codex is installed, and nothing installed it.' }
+          if ($model.verified)                         { Bail 'It claims a model is verified with no model on the machine.' }
+          if (-not $claude.install)                    { Bail 'It does not say how to install Claude Code.' }
+
+          Write-Host ''
+          Write-Host 'Windows install works: cloned, installed, database created, claimed, gate holds.'
+          Stop-Process -Id $dev.Id -Force -ErrorAction SilentlyContinue
+
+      - name: Dev server output when something failed
+        if: failure()
+        working-directory: ${{ runner.temp }}\lore
+        run: |
+          foreach ($f in 'dev-out.log', 'dev-err.log', '.install.log') {
+            if (Test-Path $f) { Write-Host "--- $f ---"; Get-Content $f -Tail 120 }
+          }

@@ -242,7 +242,8 @@ function checkWebhooks(): Capability {
     status: secret ? 'ok' : 'missing',
     detail: secret ? 'signing key set, deliveries will be signed' : undefined,
     fix: secret ? undefined : [
-      '1. Generate a signing key: `openssl rand -hex 32`',
+      // openssl is not on a plain Windows install, and Node always is.
+      '1. Generate a signing key: `node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"`',
       '2. Put it in .env.local as LORE_WEBHOOK_SECRET',
       '3. Add endpoints in Settings, or POST them to /api/webhooks/endpoints',
       'Receivers verify the X-Lore-Signature header against this key. See docs/WEBHOOKS.md',
